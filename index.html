@@ -24,15 +24,19 @@
         font-size: 1em;
       }
 
-      .container {
-        display: flex;
+      #title,
+      #container {
+        display: none;
+      }
+
+      #container {
         width: 100%;
         height: 32px;
         align-items: center;
         justify-content: center;
       }
 
-      .input {
+      #broker-url {
         height: 32px;
         border: none;
         background-color: #34495e;
@@ -41,7 +45,7 @@
         border-radius: 4px;
       }
 
-      .btn {
+      #connect-btn {
         height: 32px;
         background-color: #3498db;
         color: white;
@@ -53,21 +57,21 @@
         -ms-user-select: none;
       }
 
-      .btn:hover {
+      #connect-btn:hover {
         background-color: #5faee3;
         cursor: pointer;
       }
 
-      .btn:active {
+      #connect-btn:active {
         background-color: #217dbb;
       }
     </style>
   </head>
   <body>
-    <p>DSA Visualizer</p>
-    <div class="container">
-      <input id="broker-url" class="input" type="text" autocomplete="url" placeholder="URL to DSBroker"></input>
-      <div id="connect-btn" class="btn" style="margin-left: 16px;">Connect</div>
+    <p id="title">Visualizer</p>
+    <div id="container">
+      <input id="broker-url" type="text" autocomplete="url" placeholder="URL to DSBroker"></input>
+      <div id="connect-btn" style="margin-left: 16px;">Connect</div>
     </div>
     <!-- d3 version 3.5.6 -->
     <script type="text/javascript" src="dist/d3.min.js"></script>
