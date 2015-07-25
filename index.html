@@ -16,12 +16,15 @@
       }
 
       body {
+        font-family: 'Roboto', sans-serif;
+        font-size: 1em;
+      }
+
+      body.flex {
         display: flex;
         align-items: center;
         justify-content: center;
         flex-direction: column;
-        font-family: 'Roboto', sans-serif;
-        font-size: 1em;
       }
 
       #title,
@@ -65,12 +68,39 @@
       #connect-btn:active {
         background-color: #217dbb;
       }
+
+      #tooltip {
+        height: 32px;
+        color: white;
+        padding: 9px;
+        border-radius: 4px;
+        font-size: 14px;
+        background-color: rgba(44, 62, 80, 0.95);
+        position: absolute;
+        top: 0;
+        left: 0;
+        z-index: 999;
+      }
+
+      .node circle {
+        fill: #fff;
+      }
+
+      .node {
+        font: 10px 'Roboto', sans-serif;
+      }
+
+      .link {
+        fill: none;
+        stroke: #bdc3c7;
+        stroke-width: 1.5px;
+      }
     </style>
   </head>
-  <body>
+  <body class="flex">
     <p id="title">Visualizer</p>
     <div id="container">
-      <input id="broker-url" type="text" autocomplete="url" placeholder="URL to DSBroker"></input>
+      <input id="broker-url" type="text" autocomplete="on" placeholder="URL to DSBroker"></input>
       <div id="connect-btn" style="margin-left: 16px;">Connect</div>
     </div>
     <!-- d3 version 3.5.6 -->
