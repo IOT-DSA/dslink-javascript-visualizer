@@ -78,6 +78,91 @@
     return 'node';
   }
 
+  function toggle(d) {
+    if (d.children) {
+      d._children = d.children;
+      d.children = null;
+    } else {
+      d.children = d._children;
+      d._children = null;
+    }
+  }
+
+  var root;
+  function update(n) {
+    var depthSize = [1];
+
+    function depth(obj, d) {
+      if(obj.children && obj.children.length > 0) {
+        obj.children.forEach(function(child) {
+          depthSize[d] = !!depthSize[d] ? depthSize[d] + 1 : 1;
+          depth(child, d + 1);
+        });
+      }
+    }
+    depth(root, 1);
+
+    cluster = cluster.size([200 + (20 * Math.max.apply(Math, depthSize)), depthSize.length * 300]);
+
+    var nodes = cluster.nodes(root),
+        links = cluster.links(nodes);
+
+    svg.selectAll('.link').remove();
+    var link = svg.selectAll('.link')
+        .data(links);
+
+    link.enter().append('path')
+        .attr('class', 'link')
+        .attr('d', diagonal);
+
+    link.exit().remove();
+
+    svg.selectAll('.node').remove();
+    var node = svg.selectAll('.node')
+        .data(nodes);
+
+    var nodeEnter = node.enter().append('g')
+        .attr('class', 'node')
+        .attr('transform', function(d) { return 'translate(' + d.y + ',' + d.x + ')'; });
+
+    node.exit().remove();
+
+    var circle = nodeEnter.append('circle')
+        .attr('r', 4.5)
+        .style('fill', function(d) {
+          return getColorForNode(d);
+        })
+        .on('mouseover', function(d) {
+          var x = (d.y * zoom.scale() + zoom.translate()[0]);
+          var y = (d.x * zoom.scale() + zoom.translate()[1]);
+
+          var nodeText = 'NODE';
+
+          tooltip.html('<span style="margin-right: 8px;color: '
+              + getColorForNode(d) + ';">'
+              + getNodeType(d).toUpperCase()
+              + '</span>' + d.node.remotePath);
+          tooltip.style('display', 'block');
+          tooltip.style('left', (x - (tooltip.node().getBoundingClientRect().width / 2)) + 'px');
+          tooltip.style('top', (y - 40) + 'px');
+          d3.select(this).attr('r', 6);
+        })
+        .on('mouseout', function(d) {
+          tooltip.style('display', 'none');
+          d3.select(this).attr('r', 4.5);
+        })
+        .on('click', function(d) {
+          toggle(d);
+          update(d);
+        });
+
+    nodeEnter.append('text')
+        .attr('dx', function(d) { return d.children && d.children.length > 0 ? -8 : 8; })
+        .attr('dy', 3)
+        .style('text-anchor', function(d) { return d.children && d.children.length ? 'end' : 'start'; })
+        .text(function(d) { return d.name; });
+  }
+
   function connect(url) {
     var link = new DS.LinkProvider(url, 'visualizer-', {
       isRequester: true,
@@ -87,7 +172,7 @@
     return link.connect().then(function() {
       return link.onRequesterReady;
     }).then(function(requester) {
-      var root = {
+      root = {
         name: 'conns',
         children: [],
         node: {
@@ -96,7 +181,6 @@
         }
       };
 
-      var depthSize = [1];
       function list(path, obj, depth) {
         var called = false;
         return new Promise(function(resolve, reject) {
@@ -116,7 +200,6 @@
               };
 
               obj.children.push(map);
-              depthSize[depth] = !!depthSize[depth] ? depthSize[depth] + 1 : 1;
 
               if(node.remotePath.split('/').length <= 3)
                 promises.push(list(node.remotePath, map, depth + 1));
@@ -133,53 +216,7 @@
 
       list('/conns', root, 1).then(function() {
         console.log('done');
-        cluster = cluster.size([200 + (20 * Math.max.apply(Math, depthSize)), depthSize.length * 300]);
-
-        var nodes = cluster.nodes(root),
-            links = cluster.links(nodes);
-
-        var link = svg.selectAll('.link')
-            .data(links)
-            .enter().append('path')
-            .attr('class', 'link')
-            .attr('d', diagonal);
-
-        var node = svg.selectAll('.node')
-            .data(nodes)
-            .enter().append('g')
-            .attr('class', 'node')
-            .attr('transform', function(d) { return 'translate(' + d.y + ',' + d.x + ')'; });
-
-        var circle = node.append('circle')
-            .attr('r', 4.5)
-            .style('fill', function(d) {
-              return getColorForNode(d);
-            })
-            .on('mouseover', function(d) {
-              var x = (d.y * zoom.scale() + zoom.translate()[0]);
-              var y = (d.x * zoom.scale() + zoom.translate()[1]);
-
-              var nodeText = 'NODE';
-
-              tooltip.html('<span style="margin-right: 8px;color: '
-                  + getColorForNode(d) + ';">'
-                  + getNodeType(d).toUpperCase()
-                  + '</span>' + d.node.remotePath);
-              tooltip.style('display', 'block');
-              tooltip.style('left', (x - (tooltip.node().getBoundingClientRect().width / 2)) + 'px');
-              tooltip.style('top', (y - 40) + 'px');
-              d3.select(this).attr('r', 6);
-            })
-            .on('mouseout', function(d) {
-              tooltip.style('display', 'none');
-              d3.select(this).attr('r', 4.5);
-            });
-
-        node.append('text')
-            .attr('dx', function(d) { return d.children && d.children.length > 0 ? -8 : 8; })
-            .attr('dy', 3)
-            .style('text-anchor', function(d) { return d.children && d.children.length ? 'end' : 'start'; })
-            .text(function(d) { return d.name; });
+        update(root);
       });
     }).catch(function(err) {
       console.log(err.$thrownJsError ? err.$thrownJsError.stack : err.stack);
