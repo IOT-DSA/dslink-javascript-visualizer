@@ -197,17 +197,7 @@
       var circle = nodeEnter.append('circle')
           .attr('r', 4.5)
           .on('mouseover', function(d) {
-            var text = '<span style="margin-right: 8px;color: '
-              + types.getColor(d) + ';">'
-              + types.getType(d).toUpperCase()
-              + '</span>' + d.node.remotePath;
-
-            var children = Object.keys(d.node.children).length;
-
-            if(types.getType(d) === 'node' && children > 0)
-              text += '<div class="legend-item" style="text-align:right;">' + children + ' children</div>'
-
-            tooltip.show(d, text);
+            visualizer.showTooltip(d);
             d3.select(this).attr('r', 6);
           })
           .on('mouseout', function(d) {
@@ -331,6 +321,22 @@
         console.log(err.$thrownJsError ? err.$thrownJsError.stack : err.stack);
       });
     },
+    showTooltip: function(d) {
+      var text = '<span style="margin-right: 8px;color: '
+        + types.getColor(d) + ';">'
+        + types.getType(d).toUpperCase()
+        + '</span>' + d.node.remotePath;
+
+      var children = Object.keys(d.node.children).length;
+
+      if(types.getType(d) === 'node' && children > 0)
+        text += '<div class="legend-item" style="text-align:right;">' + children + ' children</div>'
+
+      var x = ((d.y + visualizer.translateY) * zoom.scale() + zoom.translate()[0]);
+      var y = ((d.x + visualizer.translateX) * zoom.scale() + zoom.translate()[1]);
+
+      tooltip.show(x, y, text);
+    },
     done: function() {
       console.log('done');
 
@@ -353,10 +359,8 @@
             .text('tooltip');
 
         return {
-          show: function(d, text) {
-            var x = ((d.y + visualizer.translateY) * zoom.scale() + zoom.translate()[0]);
-            var y = ((d.x + visualizer.translateX) * zoom.scale() + zoom.translate()[1]);
-
+          node: node,
+          show: function(x, y, text) {
             node.html(text);
             node.style('display', 'block');
 
@@ -367,6 +371,10 @@
           },
           hide: function() {
             node.style('display', 'none');
+            tooltip.node.style('left', 'auto');
+            tooltip.node.style('top', 'auto');
+            tooltip.node.style('right', 'auto');
+            tooltip.node.style('bottom', 'auto');
           }
         };
       }());
@@ -386,6 +394,15 @@
 
       d3.select('body').append('div')
           .attr('id', 'home')
+          .on('mouseover', function(d) {
+            tooltip.node.text('Go to /conns');
+            tooltip.node.style('display', 'block');
+            tooltip.node.style('right', '88px');
+            tooltip.node.style('bottom', '28px');
+          })
+          .on('mouseout', function(d) {
+            tooltip.hide();
+          })
           .on('click', function() {
             zoom.translate([400, 400]);
             zoom.scale(1);
