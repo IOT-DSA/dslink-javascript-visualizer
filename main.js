@@ -260,7 +260,6 @@
             return;
           called = true;
 
-          var promises = [];
           Object.keys(update.node.children).forEach(function(child) {
             var node = update.node.children[child];
             if(node.configs['$disconnectedTs'])
@@ -274,16 +273,9 @@
             };
 
             (obj._children || obj.children || (obj.children = [])).push(map);
-
-            // if(!deep)
-            //  promises.push(list(node.remotePath, map, true));
           });
 
-          Promise.all(promises).then(function() {
-            resolve();
-          }).catch(function(e) {
-            reject(e);
-          });
+          resolve();
         });
       });
     },
@@ -364,6 +356,20 @@
             .html('<div class="color" style="float:left;background-color:' + types.colors[type] + ';"></div><div style="float:left;display:inline-block;">' + type.toUpperCase() + '</div>');
       });
 
+      d3.select('body').append('div')
+          .attr('id', 'home')
+          .on('click', function() {
+            zoom.translate([400, 400]);
+            zoom.scale(1);
+            svgRoot.transition()
+                .duration(800)
+                .attr('transform', 'translate(400,400)scale(1)');
+          })
+          .append('img')
+          .attr('src', 'images/home.svg')
+          .attr('width', '24px')
+          .attr('height', '24px');
+
       visualizer.update(root);
 
       zoom.translate([400, 400]);
@@ -386,6 +392,8 @@
           });
         };
       } else {
+        if(params.url[params.url.length - 1] === '/')
+          params.url = params.url.substring(0, -1);
         visualizer.connect(params.url);
       }
     }
