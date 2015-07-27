@@ -131,7 +131,15 @@
       link.enter().insert('path', 'g')
           .attr('class', 'link')
           .attr('d', function(d) {
-            return diagonal({source: n, target: n});
+            var map = {
+              y: (n.y0 || n.y) + yDiff,
+              x: (n.x0 || n.x) + xDiff
+            };
+
+            return diagonal({
+              source: map,
+              target: map
+            });
           })
           .transition()
           .duration(400)
