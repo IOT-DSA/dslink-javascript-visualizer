@@ -87,8 +87,7 @@
     },
     update: function(n) {
       var depthSize = [1];
-
-      function depth(obj, d) {
+      var depth = function(obj, d) {
         if(obj.children && obj.children.length > 0) {
           obj.children.forEach(function(child) {
             depthSize[d] = !!depthSize[d] ? depthSize[d] + 1 : 1;
@@ -96,10 +95,11 @@
           });
         }
       }
+
       depth(root, 1);
 
-      var oldY = root.y;
-      var oldX = root.x;
+      var oldY = root.y || 0;
+      var oldX = root.x || 0;
 
       tree = tree.size([200 + (20 * Math.max.apply(Math, depthSize)), depthSize.length * 300]);
 
@@ -191,9 +191,6 @@
 
       var circle = nodeEnter.append('circle')
           .attr('r', 4.5)
-          .style('fill', function(d) {
-            return types.getColor(d);
-          })
           .on('mouseover', function(d) {
             var text = '<span style="margin-right: 8px;color: '
               + types.getColor(d) + ';">'
@@ -222,6 +219,23 @@
           .attr('dy', 3)
           .style('text-anchor', function(d) { return d.children && d.children.length ? 'end' : 'start'; })
           .text(function(d) { return d.name; });
+
+      node.select('circle')
+        .style('fill', function(d) {
+          if(((!d.children && !d._children) || (d.children && !d._children)) && types.getType(d) === 'node')
+            return 'white';
+          return types.getColor(d);
+        })
+        .style('stroke', function(d) {
+          if(((!d.children && !d._children) || (d.children && !d._children)) && types.getType(d) === 'node')
+            return types.getColor(d);
+          return 'none';
+        })
+        .style('stroke-width', function(d) {
+          if(((!d.children && !d._children) || (d.children && !d._children)) && types.getType(d) === 'node')
+            return '1.5px';
+          return '0';
+        });
 
       visualizer.translate(-root.y, -root.x);
     },
