@@ -103,8 +103,13 @@
 
       tree = tree.size([200 + (20 * Math.max.apply(Math, depthSize)), depthSize.length * 300]);
 
-      var nodes = tree.nodes(root).reverse(),
-          links = tree.links(nodes);
+      var nodes = tree.nodes(root);
+      // fixed size to 20px per layer
+      nodes.forEach(function(node) {
+        node.y = 300 * node.depth;
+      });
+
+      var links = tree.links(nodes);
 
       var yDiff = root.y - oldY;
       var xDiff = root.x - oldX;
@@ -210,6 +215,14 @@
             d3.select(this).attr('r', 4.5);
           })
           .on('click', function(d) {
+            if(types.getType(d) !== 'node')
+              return;
+            if(!d.listed) {
+              visualizer.list(d.node.remotePath, d).then(function() {
+                visualizer.update(d);
+              });
+              return;
+            }
             visualizer.toggle(d);
             visualizer.update(d);
           });
@@ -222,22 +235,56 @@
 
       node.select('circle')
         .style('fill', function(d) {
-          if(((!d.children && !d._children) || (d.children && !d._children)) && types.getType(d) === 'node')
+          if(((!d.children && !d._children) || (d.children && !d._children)) && types.getType(d) === 'node' && d.listed)
             return 'white';
           return types.getColor(d);
         })
         .style('stroke', function(d) {
-          if(((!d.children && !d._children) || (d.children && !d._children)) && types.getType(d) === 'node')
+          if(((!d.children && !d._children) || (d.children && !d._children)) && types.getType(d) === 'node' && d.listed)
             return types.getColor(d);
           return 'none';
         })
         .style('stroke-width', function(d) {
-          if(((!d.children && !d._children) || (d.children && !d._children)) && types.getType(d) === 'node')
+          if(((!d.children && !d._children) || (d.children && !d._children)) && types.getType(d) === 'node' && d.listed)
             return '1.5px';
           return '0';
         });
 
       visualizer.translate(-root.y, -root.x);
+    },
+    list: function(path, obj, deep) {
+      obj.listed = true;
+      var called = false;
+      return new Promise(function(resolve, reject) {
+        console.log(path);
+        visualizer.requester.list(path).on('data', function(update) {
+          if(called)
+            return;
+          called = true;
+
+          var promises = [];
+          Object.keys(update.node.children).forEach(function(child) {
+            var node = update.node.children[child];
+            var map = {
+              name: node.configs['$name'] || child,
+              children: [],
+              node: node,
+              listed: false
+            };
+
+            (obj._children || obj.children || (obj.children = [])).push(map);
+
+            // if(!deep)
+            //  promises.push(list(node.remotePath, map, true));
+          });
+
+          Promise.all(promises).then(function() {
+            resolve();
+          }).catch(function(e) {
+            reject(e);
+          });
+        });
+      });
     },
     connect: function(url) {
       var link = new DS.LinkProvider(url, 'visualizer-', {
@@ -248,50 +295,17 @@
       return link.connect().then(function() {
         return link.onRequesterReady;
       }).then(function(requester) {
-        root = {
-          name: 'conns',
-          children: [],
-          node: {
-            configs: {},
-            children: {},
-            remotePath: '/conns'
-          }
-        };
+        root = {};
 
-        function list(path, obj, depth) {
-          var called = false;
-          return new Promise(function(resolve, reject) {
-            console.log(path);
-            requester.list(path).on('data', function(update) {
-              if(called)
-                return;
-              called = true;
+        visualizer.requester = requester;
+        visualizer.list('/', root).then(function() {
+          root.children.forEach(function(child) {
+            if(child.name === 'conns')
+              root = child;
+          })
 
-              var promises = [];
-              Object.keys(update.node.children).forEach(function(child) {
-                var node = update.node.children[child];
-                var map = {
-                  name: node.configs['$name'] || child,
-                  children: [],
-                  node: node
-                };
-
-                obj.children.push(map);
-
-                if(node.remotePath.split('/').length <= 3)
-                  promises.push(list(node.remotePath, map, depth + 1));
-              });
-
-              Promise.all(promises).then(function() {
-                resolve();
-              }).catch(function(e) {
-                reject(e);
-              });
-            });
-          });
-        }
-
-        list('/conns', root, 1).then(visualizer.done);
+          return visualizer.list('/conns', root);
+        }).then(visualizer.done);
       }).catch(function(err) {
         console.log(err.$thrownJsError ? err.$thrownJsError.stack : err.stack);
       });
@@ -350,6 +364,9 @@
       });
 
       visualizer.update(root);
+
+      zoom.translate([400, 400]);
+      zoom.event(svgRoot);
     },
     main: function() {
       var params = util.getUrlParams();
