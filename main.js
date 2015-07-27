@@ -109,26 +109,53 @@
       var yDiff = root.y - oldY;
       var xDiff = root.x - oldX;
 
-      var dd = d3.svg.diagonal()
-          .projection(function(d) { return [d.y + yDiff, d.x + xDiff]; });
-
       var link = svg.selectAll('.link')
           .data(links, function(d) { return d.target.node.remotePath; });
 
+      link.attr('d', function(d) {
+            return diagonal({
+              source: {
+                y: d.source.y0 + yDiff,
+                x: d.source.x0 + xDiff
+              },
+              target: {
+                y: d.target.y0 + yDiff,
+                x: d.target.x0 + xDiff
+              }
+            });
+          })
+          .transition()
+          .duration(400)
+          .attr('d', diagonal);
+
       link.enter().insert('path', 'g')
-          .attr('class', 'link');
+          .attr('class', 'link')
+          .attr('d', function(d) {
+            return diagonal({source: n, target: n});
+          })
+          .transition()
+          .duration(400)
+          .attr('d', diagonal);
 
       link.exit()
+          .attr('d', function(d) {
+            return diagonal({
+              source: {
+                y: d.source.y0 + yDiff,
+                x: d.source.x0 + xDiff
+              },
+              target: {
+                y: d.target.y0 + yDiff,
+                x: d.target.x0 + xDiff
+              }
+            });
+          })
           .transition()
           .duration(400)
           .attr('d', function(d) {
             return diagonal({source: n, target: n});
           })
           .remove();
-
-      link.transition()
-          .duration(400)
-          .attr('d', diagonal);
 
       var node = svg.selectAll('.node')
           .data(nodes, function(d) { return d.node.remotePath; });
@@ -137,16 +164,20 @@
 
       var nodeEnter = node.enter().append('g')
           .attr('class', 'node')
-          .attr('transform', 'translate(' + n.y + ',' + n.x + ')');
+          .attr('transform', 'translate(' + n.y + ',' + n.x + ')')
+          .attr('opacity', 0);
 
       node.transition()
           .duration(400)
+          .attr('opacity', 1)
           .attr('transform', function(d) { d.y0 = d.y; d.x0 = d.x; return 'translate(' + d.y + ',' + d.x + ')'; });
 
       node.exit()
           .attr('transform', function(d) { return 'translate(' + ((d.y0 || 0) + yDiff) + ',' + ((d.x0 || 0) + xDiff) + ')'; })
+          .attr('opacity', 1)
           .transition()
           .duration(400)
+          .attr('opacity', 0)
           .attr('transform', 'translate(' + n.y + ',' + n.x + ')')
           .remove();
 
@@ -156,10 +187,17 @@
             return types.getColor(d);
           })
           .on('mouseover', function(d) {
-            tooltip.show(d, '<span style="margin-right: 8px;color: '
+            var text = '<span style="margin-right: 8px;color: '
               + types.getColor(d) + ';">'
               + types.getType(d).toUpperCase()
-              + '</span>' + d.node.remotePath);
+              + '</span>' + d.node.remotePath;
+
+            var children = Object.keys(d.node.children).length;
+
+            if(types.getType(d) === 'node' && children > 0)
+              text += '<div class="legend-item" style="text-align:right;">' + children + ' children</div>'
+
+            tooltip.show(d, text);
             d3.select(this).attr('r', 6);
           })
           .on('mouseout', function(d) {
@@ -193,6 +231,7 @@
           children: [],
           node: {
             configs: {},
+            children: {},
             remotePath: '/conns'
           }
         };
@@ -263,8 +302,11 @@
 
             node.html(text);
             node.style('display', 'block');
-            node.style('left', (x - (node.node().getBoundingClientRect().width / 2)) + 'px');
-            node.style('top', (y - 40) + 'px');
+
+            var rect = node.node().getBoundingClientRect();
+
+            node.style('left', (x - (rect.width / 2)) + 'px');
+            node.style('top', (y - 8 - rect.height) + 'px');
           },
           hide: function() {
             node.style('display', 'none');
