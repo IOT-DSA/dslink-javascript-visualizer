@@ -216,9 +216,7 @@
           });
 
       nodeEnter.append('text')
-          .attr('dx', function(d) { return d.children && d.children.length > 0 ? -8 : 8; })
           .attr('dy', 3)
-          .style('text-anchor', function(d) { return d.children && d.children.length ? 'end' : 'start'; })
           .text(function(d) { return d.name; });
 
       node.select('circle')
@@ -237,6 +235,12 @@
             return '1.5px';
           return '0';
         });
+
+      node.select('text')
+          .attr('dx', function(d) { return d.children && d.children.length > 0 ? -8 : 8; })
+          .style('text-anchor', function(d) {
+            return d.children && d.children.length ? 'end' : 'start';
+          });
 
       visualizer.translate(-root.y, -root.x);
     },
@@ -263,6 +267,13 @@
             };
 
             (obj._children || obj.children || (obj.children = [])).push(map);
+
+            if(types.getType(map) === 'value') {
+              map.value = null;
+              visualizer.requester.subscribe(map.node.remotePath, function(subUpdate) {
+                map.value = subUpdate.value;
+              });
+            }
           }
 
           var removeChild = function(change) {
@@ -321,6 +332,12 @@
         console.log(err.$thrownJsError ? err.$thrownJsError.stack : err.stack);
       });
     },
+    getScreenPos: function(d) {
+      return {
+        x: ((d.y + visualizer.translateY) * zoom.scale() + zoom.translate()[0]),
+        y: ((d.x + visualizer.translateX) * zoom.scale() + zoom.translate()[1])
+      };
+    },
     showTooltip: function(d) {
       var text = '<span style="margin-right: 8px;color: '
         + types.getColor(d) + ';">'
@@ -330,12 +347,14 @@
       var children = Object.keys(d.node.children).length;
 
       if(types.getType(d) === 'node' && children > 0)
-        text += '<div class="legend-item" style="text-align:right;">' + children + ' children</div>'
+        text += '<div class="legend-item" style="text-align:right;">' + children + ' children</div>';
 
-      var x = ((d.y + visualizer.translateY) * zoom.scale() + zoom.translate()[0]);
-      var y = ((d.x + visualizer.translateX) * zoom.scale() + zoom.translate()[1]);
+      if(types.getType(d) === 'value')
+      text += '<div class="legend-item" style="text-align:right;">' + (d.value == null ? 'null' : d.value.toString()) + '</div>';
 
-      tooltip.show(x, y, text);
+      var pos = visualizer.getScreenPos(d);
+
+      tooltip.show(pos.x, pos.y, text);
     },
     done: function() {
       console.log('done');
