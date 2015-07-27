@@ -215,8 +215,6 @@
             d3.select(this).attr('r', 4.5);
           })
           .on('click', function(d) {
-            if(types.getType(d) !== 'node')
-              return;
             if(!d.listed) {
               visualizer.list(d.node.remotePath, d).then(function() {
                 visualizer.update(d);
@@ -235,17 +233,17 @@
 
       node.select('circle')
         .style('fill', function(d) {
-          if(((!d.children && !d._children) || (d.children && !d._children)) && types.getType(d) === 'node' && d.listed)
+          if(((!d.children && !d._children) || (d.children && !d._children)) && d.listed)
             return 'white';
           return types.getColor(d);
         })
         .style('stroke', function(d) {
-          if(((!d.children && !d._children) || (d.children && !d._children)) && types.getType(d) === 'node' && d.listed)
+          if(((!d.children && !d._children) || (d.children && !d._children)) && d.listed)
             return types.getColor(d);
           return 'none';
         })
         .style('stroke-width', function(d) {
-          if(((!d.children && !d._children) || (d.children && !d._children)) && types.getType(d) === 'node' && d.listed)
+          if(((!d.children && !d._children) || (d.children && !d._children)) && d.listed)
             return '1.5px';
           return '0';
         });
@@ -265,6 +263,9 @@
           var promises = [];
           Object.keys(update.node.children).forEach(function(child) {
             var node = update.node.children[child];
+            if(node.configs['$disconnectedTs'])
+              return;
+
             var map = {
               name: node.configs['$name'] || child,
               children: [],
