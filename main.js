@@ -256,24 +256,52 @@
       return new Promise(function(resolve, reject) {
         console.log(path);
         visualizer.requester.list(path).on('data', function(update) {
-          if(called)
-            return;
-          called = true;
+          var children = update.node.children;
+          var keys = Object.keys(children);
 
-          Object.keys(update.node.children).forEach(function(child) {
-            var node = update.node.children[child];
+          var addChild = function(child) {
+            var node = children[child];
             if(node.configs['$disconnectedTs'])
               return;
 
             var map = {
               name: node.configs['$name'] || child,
+              realName: child,
               children: [],
               node: node,
               listed: false
             };
 
             (obj._children || obj.children || (obj.children = [])).push(map);
-          });
+          }
+
+          var removeChild = function(change) {
+            [].concat(obj._children || obj.children).forEach(function(child, index) {
+              if(child.realName === change)
+                (obj._children || obj.children).splice(index, 1);
+            });
+          };
+
+          if(!called) {
+            keys.forEach(addChild);
+            called = true;
+          } else {
+            update.changes.forEach(function(change) {
+              if(change.indexOf('@') === 0 || change.indexOf('$') === 0)
+                return;
+
+              if(keys.indexOf(change) > 0) {
+                if(children[change].configs['$disconnectedTs']) {
+                  removeChild(change);
+                  return;
+                }
+                addChild(change);
+              } else {
+                removeChild(change);
+              }
+            });
+            visualizer.update(obj);
+          }
 
           resolve();
         });
