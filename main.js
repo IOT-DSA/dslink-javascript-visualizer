@@ -65,41 +65,9 @@
 
   var zoom = d3.behavior.zoom();
 
-  var svgRoot = d3.select('body').append('svg')
-      .style('width', '100%')
-      .style('height', '100%')
-      .call(zoom.on('zoom', function() {
-        svgRoot.attr('transform', 'translate(' + d3.event.translate + ')scale(' + d3.event.scale + ')');
-        zoom.translate(d3.event.translate);
-        zoom.scale(d3.event.scale);
-      }))
-      .append('g');
+  var svg, tooltip, root;
+  var i = 0;
 
-  var svg = svgRoot.append('g');
-
-  var tooltip = (function() {
-    var node = d3.select('body').append('div')
-        .attr('id', 'tooltip')
-        .style('display', 'none')
-        .text('tooltip');
-
-    return {
-      show: function(d, text) {
-        var x = ((d.y + visualizer.translateY) * zoom.scale() + zoom.translate()[0]);
-        var y = ((d.x + visualizer.translateX) * zoom.scale() + zoom.translate()[1]);
-
-        node.html(text);
-        node.style('display', 'block');
-        node.style('left', (x - (node.node().getBoundingClientRect().width / 2)) + 'px');
-        node.style('top', (y - 40) + 'px');
-      },
-      hide: function() {
-        node.style('display', 'none');
-      }
-    };
-  }());
-
-  var root;
   var visualizer = {
     translateY: 0,
     translateX: 0,
@@ -130,30 +98,57 @@
       }
       depth(root, 1);
 
+      var oldY = root.y;
+      var oldX = root.x;
+
       tree = tree.size([200 + (20 * Math.max.apply(Math, depthSize)), depthSize.length * 300]);
 
-      var nodes = tree.nodes(root),
+      var nodes = tree.nodes(root).reverse(),
           links = tree.links(nodes);
 
-      svg.selectAll('.link').remove();
-      var link = svg.selectAll('.link')
-          .data(links);
+      var yDiff = root.y - oldY;
+      var xDiff = root.x - oldX;
 
-      link.enter().append('path')
-          .attr('class', 'link')
+      var dd = d3.svg.diagonal()
+          .projection(function(d) { return [d.y + yDiff, d.x + xDiff]; });
+
+      var link = svg.selectAll('.link')
+          .data(links, function(d) { return d.target.node.remotePath; });
+
+      link.enter().insert('path', 'g')
+          .attr('class', 'link');
+
+      link.exit()
+          .transition()
+          .duration(400)
+          .attr('d', function(d) {
+            return diagonal({source: n, target: n});
+          })
+          .remove();
+
+      link.transition()
+          .duration(400)
           .attr('d', diagonal);
 
-      link.exit().remove();
-
-      svg.selectAll('.node').remove();
       var node = svg.selectAll('.node')
-          .data(nodes);
+          .data(nodes, function(d) { return d.node.remotePath; });
+
+      node.attr('transform', function(d) { return 'translate(' + ((d.y0 || 0) + yDiff) + ',' + ((d.x0 || 0) + xDiff) + ')'; });
 
       var nodeEnter = node.enter().append('g')
           .attr('class', 'node')
-          .attr('transform', function(d) { return 'translate(' + d.y + ',' + d.x + ')'; });
+          .attr('transform', 'translate(' + n.y + ',' + n.x + ')');
 
-      node.exit().remove();
+      node.transition()
+          .duration(400)
+          .attr('transform', function(d) { d.y0 = d.y; d.x0 = d.x; return 'translate(' + d.y + ',' + d.x + ')'; });
+
+      node.exit()
+          .attr('transform', function(d) { return 'translate(' + ((d.y0 || 0) + yDiff) + ',' + ((d.x0 || 0) + xDiff) + ')'; })
+          .transition()
+          .duration(400)
+          .attr('transform', 'translate(' + n.y + ',' + n.x + ')')
+          .remove();
 
       var circle = nodeEnter.append('circle')
           .attr('r', 4.5)
@@ -235,13 +230,49 @@
           });
         }
 
-        list('/conns', root, 1).then(function() {
-          console.log('done');
-          visualizer.update(root);
-        });
+        list('/conns', root, 1).then(visualizer.done);
       }).catch(function(err) {
         console.log(err.$thrownJsError ? err.$thrownJsError.stack : err.stack);
       });
+    },
+    done: function() {
+      console.log('done');
+
+      var svgRoot = d3.select('body').append('svg')
+          .style('width', '100%')
+          .style('height', '100%')
+          .call(zoom.on('zoom', function() {
+            svgRoot.attr('transform', 'translate(' + d3.event.translate + ')scale(' + d3.event.scale + ')');
+            zoom.translate(d3.event.translate);
+            zoom.scale(d3.event.scale);
+          }))
+          .append('g');
+
+      svg = svgRoot.append('g');
+
+      tooltip = (function() {
+        var node = d3.select('body').append('div')
+            .attr('id', 'tooltip')
+            .style('display', 'none')
+            .text('tooltip');
+
+        return {
+          show: function(d, text) {
+            var x = ((d.y + visualizer.translateY) * zoom.scale() + zoom.translate()[0]);
+            var y = ((d.x + visualizer.translateX) * zoom.scale() + zoom.translate()[1]);
+
+            node.html(text);
+            node.style('display', 'block');
+            node.style('left', (x - (node.node().getBoundingClientRect().width / 2)) + 'px');
+            node.style('top', (y - 40) + 'px');
+          },
+          hide: function() {
+            node.style('display', 'none');
+          }
+        };
+      }());
+
+      visualizer.update(root);
     },
     main: function() {
       var params = util.getUrlParams();
