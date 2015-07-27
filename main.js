@@ -272,6 +272,19 @@
         };
       }());
 
+      var legend = d3.select('body').append('div')
+          .attr('id', 'legend');
+
+      legend.append('p')
+          .attr('id', 'title')
+          .text('Visualizer');
+
+      Object.keys(types.colors).forEach(function(type) {
+        legend.append('div')
+            .attr('class', 'legend-item')
+            .html('<div class="color" style="float:left;background-color:' + types.colors[type] + ';"></div><div style="float:left;display:inline-block;">' + type.toUpperCase() + '</div>');
+      });
+
       visualizer.update(root);
     },
     main: function() {

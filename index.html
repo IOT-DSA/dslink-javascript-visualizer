@@ -41,6 +41,7 @@
 
       #broker-url {
         height: 32px;
+        width: 256px;
         border: none;
         background-color: #34495e;
         color: white;
@@ -79,7 +80,49 @@
         position: absolute;
         top: 0;
         left: 0;
+        z-index: 998;
+      }
+
+      #legend {
+        position: absolute;
+        width: 128px;
+        padding: 9px;
+        border-radius: 4px;
+        font-size: 14px;
+        bottom: 16px;
+        left: 16px;
         z-index: 999;
+        background-color: white;
+
+        box-shadow: 0 2px 2px 0 rgba(0, 0, 0, 0.14),
+            0 3px 1px -2px rgba(0, 0, 0, 0.2),
+            0 1px 5px 0 rgba(0, 0, 0, 0.12);
+      }
+
+      #legend > * {
+        display: block;
+        font-weight: bold;
+      }
+
+      #legend #title {
+        text-align: center;
+      }
+
+      .legend-item {
+        height: 32px;
+        width: 100%;
+        line-height: 32px;
+      }
+
+      .legend-item > .color {
+        display: inline-block;
+        height: 8px;
+        width: 8px;
+        border-radius: 4px;
+        margin-left: 12px;
+        margin-right: 12px;
+        margin-top: 12px;
+        margin-bottom: 12px;
       }
 
       .node {
