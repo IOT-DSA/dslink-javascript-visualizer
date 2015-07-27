@@ -399,8 +399,10 @@
             tooltip.node.style('display', 'block');
             tooltip.node.style('right', '88px');
             tooltip.node.style('bottom', '28px');
+            tooltip.node.style('text-align', 'center');
           })
           .on('mouseout', function(d) {
+            tooltip.node.style('text-align', 'left');
             tooltip.hide();
           })
           .on('click', function() {
