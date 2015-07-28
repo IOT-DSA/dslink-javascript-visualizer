@@ -98,8 +98,8 @@
 
       depth(root, 1);
 
-      var oldY = root.y || 0;
-      var oldX = root.x || 0;
+      var oldY = root.y;
+      var oldX = root.x;
 
       tree = tree.size([200 + (20 * Math.max.apply(Math, depthSize)), depthSize.length * 300]);
 
@@ -111,8 +111,8 @@
 
       var links = tree.links(nodes);
 
-      var yDiff = root.y - oldY;
-      var xDiff = root.x - oldX;
+      var yDiff = root.y - (oldY || root.y);
+      var xDiff = root.x - (oldX || root.x);
 
       var link = svg.selectAll('.link')
           .data(links, function(d) { return d.target.node.remotePath; });
@@ -221,17 +221,17 @@
 
       node.select('circle')
         .style('fill', function(d) {
-          if(((!d.children && !d._children) || (d.children && !d._children)) && d.listed)
+          if(((!d.children && !d._children) || (d.children && !d._children)) && d.listed && types.getType(d) !== 'action')
             return 'white';
           return types.getColor(d);
         })
         .style('stroke', function(d) {
-          if(((!d.children && !d._children) || (d.children && !d._children)) && d.listed)
+          if(((!d.children && !d._children) || (d.children && !d._children)) && d.listed && types.getType(d) !== 'action')
             return types.getColor(d);
           return 'none';
         })
         .style('stroke-width', function(d) {
-          if(((!d.children && !d._children) || (d.children && !d._children)) && d.listed)
+          if(((!d.children && !d._children) || (d.children && !d._children)) && d.listed && types.getType(d) !== 'action')
             return '1.5px';
           return '0';
         });
