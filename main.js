@@ -339,21 +339,32 @@
       };
     },
     showTooltip: function(d) {
-      var text = '<span style="margin-right: 8px;color: '
+      var text = '<div class="legend-container"><div class="legend-item legend-title" style="color: '
         + types.getColor(d) + ';">'
         + types.getType(d).toUpperCase()
-        + '</span>' + d.node.remotePath;
+        + '</div><div class="legend-item legend-content">' + d.node.remotePath + '</div></div>';
+
+      var addRow = function(content) {
+        text += '<div class="legend-item" style="text-align:right;">' + content + '</div>';
+      };
+
+      var addTitleRow = function(title, content) {
+        text += '<div class="legend-container"><div class="legend-item legend-title">' + title + '</div><div class="legend-item legend-content">' + content + '</div></div>';
+      };
 
       var children = Object.keys(d.node.children).length;
 
       if(types.getType(d) === 'node' && children > 0)
-        text += '<div class="legend-item" style="text-align:right;">' + children + ' children</div>';
+        addRow(children + ' children');
 
-      if(types.getType(d) === 'value')
-      text += '<div class="legend-item" style="text-align:right;">' + (d.value == null ? 'null' : d.value.toString()) + '</div>';
+      if(types.getType(d) === 'value') {
+        addTitleRow('type', d.node.configs['$type']);
+
+        var value = (d.value == null ? 'null' : d.value.toString());
+        addTitleRow('value', value);
+      }
 
       var pos = visualizer.getScreenPos(d);
-
       tooltip.show(pos.x, pos.y, text);
     },
     done: function() {

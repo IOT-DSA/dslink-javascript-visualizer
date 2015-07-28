@@ -76,7 +76,7 @@
         padding: 0px 9px;
         border-radius: 4px;
         font-size: 14px;
-        background-color: rgba(44, 62, 80, 0.95);
+        background-color: rgba(44, 62, 80, 0.9);
         position: absolute;
         z-index: 998;
         min-width: 128px;
@@ -110,6 +110,7 @@
         height: 32px;
         width: 100%;
         line-height: 32px;
+        white-space: nowrap;
       }
 
       .legend-item > .color {
@@ -121,6 +122,23 @@
         margin-right: 12px;
         margin-top: 12px;
         margin-bottom: 12px;
+      }
+
+      .legend-container {
+        height: 32px;
+      }
+
+      .legend-title {
+        display: inline-block;
+        float: left;
+        width: 56px;
+      }
+
+      .legend-content {
+        display: inline-block;
+        text-align: right;
+        float: right;
+        width: auto;
       }
 
       #home {
