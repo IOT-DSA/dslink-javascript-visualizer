@@ -242,6 +242,22 @@
             return d.children && d.children.length ? 'end' : 'start';
           });
 
+      node.select(function(d) {
+        if(!d.queue.value)
+          return null;
+        d.queue.value = false;
+        return this;
+      }).append('circle')
+        .style('fill', 'none')
+        .style('stroke', COLOR_VALUE)
+        .style('stroke-width', '1px')
+        .attr('r', 0.1)
+        .transition()
+        .duration(300)
+        .attr('r', 7.5)
+        .remove();
+
+
       visualizer.translate(-root.y, -root.x);
     },
     list: function(path, obj, deep) {
@@ -263,15 +279,26 @@
               realName: child,
               children: [],
               node: node,
-              listed: false
+              listed: false,
+              queue: {
+                value: false
+              }
             };
 
             (obj._children || obj.children || (obj.children = [])).push(map);
 
             if(types.getType(map) === 'value') {
               map.value = null;
+              var subCalled = false;
               visualizer.requester.subscribe(map.node.remotePath, function(subUpdate) {
+                if(subCalled) {
+                  map.queue.value = true;
+                  visualizer.update(map);
+                }
+
+                subCalled = true;
                 map.value = subUpdate.value;
+
               });
             }
           }
@@ -341,12 +368,12 @@
     showTooltip: function(d) {
       var text = '';
 
-      var addRow = function(content) {
-        text += '<div class="legend-item" style="text-align:right;">' + content + '</div>';
+      var addRow = function(content, style) {
+        text += '<div class="legend-item" style="text-align:right;' + style + '">' + content + '</div>';
       };
 
-      var addTitleRow = function(title, content) {
-        text += '<div class="legend-container"><div class="legend-item legend-title">' + title + '</div><div class="legend-item legend-content">' + content + '</div></div>';
+      var addTitleRow = function(title, content, style) {
+        text += '<div class="legend-container" style="' + style + '"><div class="legend-item legend-title">' + title + '</div><div class="legend-item legend-content">' + content + '</div></div>';
       };
 
       addTitleRow('<span style="color:' + types.getColor(d) + '">' + types.getType(d).toUpperCase() + '</span>', d.node.remotePath);
@@ -356,12 +383,25 @@
         addRow(children + ' children');
 
       if(types.getType(d) === 'value') {
-        addTitleRow('type', d.node.configs['$type']);
+        var type = d.node.configs['$type'];
+        addTitleRow('type', type);
 
-        var value = (d.value == null ? '<span style="color:#f1c40f;">null</span>' : d.value.toString());
-        if(value.trim().length == 0)
-          value = '<span style="color:#f1c40f;">\' \'</span>';
-        addTitleRow('value', value);
+        if(type === 'map' && d.value != null) {
+          addRow('value', 'text-align:left;');
+          var map = d.value._original;
+          Object.keys(map).forEach(function(key) {
+            var value = map[key];
+            value = (value == null ? '<span style="color:#f1c40f;">null</span>' : value.toString());
+            if(value.trim().length == 0)
+              value = '<span style="color:#f1c40f;">\' \'</span>';
+            addTitleRow(key, value, 'background-color: rgba(0,0,0,0.1);');
+          });
+        } else {
+          var value = (d.value == null ? '<span style="color:#f1c40f;">null</span>' : d.value.toString());
+          if(value.trim().length == 0)
+            value = '<span style="color:#f1c40f;">\' \'</span>';
+          addTitleRow('value', value);
+        }
       }
 
       var pos = visualizer.getScreenPos(d);
