@@ -396,8 +396,22 @@
 
             var rect = node.node().getBoundingClientRect();
 
-            node.style('left', (x - (rect.width / 2)) + 'px');
-            node.style('top', (y - 8 - rect.height) + 'px');
+            if(x + rect.width / 2 >= window.innerWidth)
+              x -= rect.width / 2;
+            if(x - rect.width / 2 <= 0)
+              x += rect.width / 2;
+            x -= rect.width / 2;
+
+            node.style('left', x + 'px');
+
+            if((y - 8 - rect.height) <= 0) {
+              y += 8;
+            } else {
+              y -= rect.height;
+              y -= 8;
+            }
+
+            node.style('top', y + 'px');
           },
           hide: function() {
             node.style('display', 'none');
