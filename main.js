@@ -260,7 +260,7 @@
 
       visualizer.translate(-root.y, -root.x);
     },
-    list: function(path, obj, deep) {
+    list: function(path, obj) {
       obj.listed = true;
       var called = false;
       return new Promise(function(resolve, reject) {
@@ -298,7 +298,12 @@
 
                 subCalled = true;
                 map.value = subUpdate.value;
+              });
+            }
 
+            if(types.getType(map) === 'action') {
+              visualizer.list(map.node.remotePath, map).then(function() {
+                visualizer.toggle(map);
               });
             }
           }
@@ -401,6 +406,29 @@
           if(value.trim().length == 0)
             value = '<span style="color:#f1c40f;">\' \'</span>';
           addTitleRow('value', value);
+        }
+      }
+
+      if(types.getType(d) === 'action') {
+        var config = d.node.configs;
+        var keys = Object.keys(config);
+
+        if(keys.indexOf('$params') > 0) {
+          var params = config['$params'];
+          addRow('params', 'text-align:left;');
+
+          params.forEach(function(param) {
+            addTitleRow(param.name, param.type, 'background-color: rgba(0,0,0,0.1);');
+          });
+        }
+
+        if(keys.indexOf('$columns') > 0) {
+          var columns = config['$columns'];
+          addRow('columns', 'text-align:left;');
+
+          columns.forEach(function(column) {
+            addTitleRow(column.name, column.type, 'background-color: rgba(0,0,0,0.1);');
+          });
         }
       }
 
