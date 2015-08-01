@@ -65,7 +65,7 @@
 
   var zoom = d3.behavior.zoom();
 
-  var svg, tooltip, root;
+  var dom, svg, tooltip, root;
   var i = 0;
 
   var visualizer = {
@@ -74,7 +74,11 @@
     translate: function(y, x) {
       visualizer.translateY = y;
       visualizer.translateX = x;
-      svg.attr('transform', 'translate(' + y + ',' + x + ')');
+
+      var transform = 'translate(' + y + 'px,' + x + 'px)';
+
+      svg.style('transform', transform);
+      dom.style('transform', transform);
     },
     toggle: function(d) {
       if (d.children) {
@@ -101,10 +105,27 @@
       var oldY = root.y;
       var oldX = root.x;
 
-      tree = tree.size([200 + (20 * Math.max.apply(Math, depthSize)), depthSize.length * 300]);
+      var height = 200 + (20 * Math.max.apply(Math, depthSize));
+      var width = depthSize.length * 300;
+
+      tree = tree.size([height, width]);
+
+      if(svg.attr('height') > height || svg.attr('width') > width) {
+        setTimeout(function() {
+          svg.attr({
+            height: height,
+            width: width
+          });
+        }, 400);
+      } else {
+        svg.attr({
+          height: height,
+          width: width
+        });
+      }
 
       var nodes = tree.nodes(root);
-      // fixed size to 20px per layer
+      // fixed size to 300px per layer
       nodes.forEach(function(node) {
         node.y = 300 * node.depth;
       });
@@ -133,7 +154,7 @@
           .duration(400)
           .attr('d', diagonal);
 
-      link.enter().insert('path', 'g')
+      link.enter().append('path')
           .attr('class', 'link')
           .attr('d', function(d) {
             var map = {
@@ -170,93 +191,95 @@
           })
           .remove();
 
-      var node = svg.selectAll('.node')
+      var node = dom.selectAll('div.node')
           .data(nodes, function(d) { return d.node.remotePath; });
 
-      node.attr('transform', function(d) { return 'translate(' + ((d.y0 || 0) + yDiff) + ',' + ((d.x0 || 0) + xDiff) + ')'; });
-
-      var nodeEnter = node.enter().append('g')
+      var nodeEnter = node.enter().append('div')
           .attr('class', 'node')
-          .attr('transform', 'translate(' + n.y + ',' + n.x + ')')
-          .attr('opacity', 0);
-
-      node.transition()
-          .duration(400)
-          .attr('opacity', 1)
-          .attr('transform', function(d) { d.y0 = d.y; d.x0 = d.x; return 'translate(' + d.y + ',' + d.x + ')'; });
-
-      node.exit()
-          .attr('transform', function(d) { return 'translate(' + ((d.y0 || 0) + yDiff) + ',' + ((d.x0 || 0) + xDiff) + ')'; })
-          .attr('opacity', 1)
-          .transition()
-          .duration(400)
-          .attr('opacity', 0)
-          .attr('transform', 'translate(' + n.y + ',' + n.x + ')')
-          .remove();
-
-      var circle = nodeEnter.append('circle')
-          .attr('r', 4.5)
+          .style('transform', 'translate(' + n.y + 'px,' + n.x + 'px)')
+          .style('opacity', 0)
+          .style('background-color', function(d) {
+            return types.getColor(d);
+          })
+          .style('border-color', function(d) {
+            return types.getColor(d);
+          })
           .on('mouseover', function(d) {
             visualizer.showTooltip(d);
-            d3.select(this).attr('r', 6);
+            var e = d3.select(this);
+            e.style('transform', (e.style('transform') || '') + 'scale(1.33)');
           })
           .on('mouseout', function(d) {
             tooltip.hide();
-            d3.select(this).attr('r', 4.5);
+            var e = d3.select(this);
+            e.style('transform', 'translate(' + d.y + 'px,' + d.x + 'px)');
           })
           .on('click', function(d) {
             if(!d.listed) {
               visualizer.list(d.node.remotePath, d).then(function() {
-                visualizer.update(d);
+                window.requestAnimationFrame(function() {
+                  visualizer.update(d);
+                });
               });
               return;
             }
             visualizer.toggle(d);
-            visualizer.update(d);
+            window.requestAnimationFrame(function() {
+              visualizer.update(d);
+            });
           });
 
-      nodeEnter.append('text')
-          .attr('dy', 3)
+      node.exit()
+          .style('transform', function(d) { return 'translate(' + ((d.y0 || 0) + yDiff) + 'px,' + ((d.x0 || 0) + xDiff) + 'px)'; })
+          .style('opacity', 1)
+          .transition()
+          .duration(400)
+          .style('opacity', 0)
+          .style('transform', 'translate(' + n.y + 'px,' + n.x + 'px)')
+          .remove();
+
+      var text = dom.selectAll('div.text')
+          .data(nodes, function(d) { return d.node.remotePath; });
+
+      text.enter().append('div')
+          .attr('class', 'text')
           .text(function(d) { return d.name; });
 
-      node.select('circle')
-        .style('fill', function(d) {
-          if(((!d.children && !d._children) || (d.children && !d._children)) && d.listed && types.getType(d) !== 'action')
-            return 'white';
-          return types.getColor(d);
-        })
-        .style('stroke', function(d) {
-          if(((!d.children && !d._children) || (d.children && !d._children)) && d.listed && types.getType(d) !== 'action')
-            return types.getColor(d);
-          return 'none';
-        })
-        .style('stroke-width', function(d) {
-          if(((!d.children && !d._children) || (d.children && !d._children)) && d.listed && types.getType(d) !== 'action')
-            return '1.5px';
-          return '0';
-        });
+      text.exit().remove();
 
-      node.select('text')
-          .attr('dx', function(d) { return d.children && d.children.length > 0 ? -8 : 8; })
-          .style('text-anchor', function(d) {
-            return d.children && d.children.length ? 'end' : 'start';
+      text.style('transform', function(d) { return 'translate(' + ((d.y0 || 0) + yDiff) + 'px,' + ((d.x0 || 0) + xDiff) + 'px)'; })
+
+      node.style('transform', function(d) { return 'translate(' + ((d.y0 || 0) + yDiff) + 'px,' + ((d.x0 || 0) + xDiff) + 'px)'; })
+          .style('background-color', function(d) {
+            if(((!d.children && !d._children) || (d.children && !d._children)) && d.listed && types.getType(d) !== 'action')
+              return 'white';
+            return types.getColor(d);
           });
+
+      text.transition()
+          .duration(400)
+          .style('opacity', 1)
+          .style('transform', function(d) { d.y0 = d.y; d.x0 = d.x; return 'translate(' + d.y + 'px,' + d.x + 'px)'; });
+
+      node.transition()
+          .duration(400)
+          .style('opacity', 1)
+          .style('transform', function(d) { d.y0 = d.y; d.x0 = d.x; return 'translate(' + d.y + 'px,' + d.x + 'px)'; });
 
       node.select(function(d) {
         if(!d.queue.value)
           return null;
         d.queue.value = false;
         return this;
-      }).append('circle')
-        .style('fill', 'none')
-        .style('stroke', COLOR_VALUE)
-        .style('stroke-width', '1px')
-        .attr('r', 0.1)
+      }).append('div')
+        .attr('class', 'value-update')
+        .attr('transform', 'scale(1)')
+        .attr('opacity', 1)
         .transition()
         .duration(300)
-        .attr('r', 7.5)
+        .attr('transform', 'scale(80)')
+        .attr('opacity', 0)
         .remove();
-
 
       visualizer.translate(-root.y, -root.x);
     },
@@ -293,7 +316,9 @@
               visualizer.requester.subscribe(map.node.remotePath, function(subUpdate) {
                 if(subCalled) {
                   map.queue.value = true;
-                  visualizer.update(map);
+                  window.requestAnimationFrame(function() {
+                    visualizer.update(map);
+                  });
                 }
 
                 subCalled = true;
@@ -333,7 +358,9 @@
                 removeChild(change);
               }
             });
-            visualizer.update(obj);
+            window.requestAnimationFrame(function() {
+              visualizer.update(obj);
+            });
           }
 
           resolve();
@@ -366,8 +393,8 @@
     },
     getScreenPos: function(d) {
       return {
-        x: ((d.y + visualizer.translateY) * zoom.scale() + zoom.translate()[0]),
-        y: ((d.x + visualizer.translateX) * zoom.scale() + zoom.translate()[1])
+        x: visualizer.translateY + d.y * zoom.scale() + zoom.translate()[0],
+        y: (visualizer.translateX + d.x) * zoom.scale() + zoom.translate()[1]
       };
     },
     showTooltip: function(d) {
@@ -438,17 +465,19 @@
     done: function() {
       console.log('done');
 
-      var svgRoot = d3.select('body').append('svg')
+      var div = d3.select('body').append('div')
           .style('width', '100%')
           .style('height', '100%')
           .call(zoom.on('zoom', function() {
-            svgRoot.attr('transform', 'translate(' + d3.event.translate + ')scale(' + d3.event.scale + ')');
+            div.style('transform', 'translate(' + d3.event.translate[0] + 'px,'+ d3.event.translate[1] + 'px)scale(' + d3.event.scale + ')');
             zoom.translate(d3.event.translate);
             zoom.scale(d3.event.scale);
           }))
-          .append('g');
+          .append('div')
+          .attr('class', 'graph');
 
-      svg = svgRoot.append('g');
+      svg = div.append('svg');
+      dom = div.append('div');
 
       tooltip = (function() {
         var node = d3.select('body').append('div')
@@ -520,19 +549,21 @@
           .on('click', function() {
             zoom.translate([400, 400]);
             zoom.scale(1);
-            svgRoot.transition()
+            div.transition()
                 .duration(800)
-                .attr('transform', 'translate(400,400)scale(1)');
+                .style('transform', 'translate(400px,400px)scale(1)');
           })
           .append('img')
           .attr('src', 'images/home.svg')
           .attr('width', '24px')
           .attr('height', '24px');
 
-      visualizer.update(root);
+      window.requestAnimationFrame(function() {
+        visualizer.update(root);
+      });
 
       zoom.translate([400, 400]);
-      zoom.event(svgRoot);
+      zoom.event(div);
     },
     main: function() {
       var params = util.getUrlParams();
