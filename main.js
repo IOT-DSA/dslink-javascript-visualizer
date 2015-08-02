@@ -80,8 +80,24 @@
 
   var tree = d3.layout.tree();
 
-  var diagonal = d3.svg.diagonal()
+  var normalDiagonal = d3.svg.diagonal()
       .projection(function(d) { return [d.y, d.x]; });
+
+  var skewedDiagonal = (function() {
+    var ySkew;
+    var xSkew;
+
+    var d = d3.svg.diagonal()
+        .projection(function(d) {
+          return [d.y + ySkew, d.x + xSkew];
+        });
+
+    return function(y, x) {
+      ySkew = y;
+      xSkew = x;
+      return d;
+    };
+  })();
 
   var zoom = d3.behavior.zoom();
 
@@ -99,8 +115,8 @@
 
       var transform = util.matrix().translate(y, x)();
 
-      svg.style('transform', transform);
       dom.style('transform', transform);
+      return transform;
     },
     toggle: function(d) {
       if (d.children) {
@@ -138,6 +154,9 @@
         node.y = 300 * node.depth;
       });
 
+      var yDiff = root.y - (oldY || root.y);
+      var xDiff = root.x - (oldX || root.x);
+
       setTimeout(function() {
         nodes.forEach(function(d) {
           d.x0 = d.x;
@@ -152,10 +171,14 @@
 
           visualizer.svgHeight = height;
           visualizer.svgWidth = width;
+
+          svg.style('transform', util.matrix().translate(visualizer.translateY, visualizer.translateX));
         }
       }, 400);
 
-      var heightAdjusted = height > visualizer.svgHeight || width > visualizer.svgWidth;
+      var heightAdjusted = height >= visualizer.svgHeight || width >= visualizer.svgWidth;
+
+      var diagonal = heightAdjusted ? normalDiagonal : skewedDiagonal(-yDiff, -xDiff);
 
       if(heightAdjusted) {
         svg.attr({
@@ -168,9 +191,6 @@
       }
 
       var links = tree.links(nodes);
-
-      var yDiff = root.y - (oldY || root.y);
-      var xDiff = root.x - (oldX || root.x);
 
       var link = svg.selectAll('.link')
           .data(links, function(d) { return d.target.node.remotePath; });
@@ -312,22 +332,10 @@
           });
       });
 
-      node.select(function(d) {
-        if(!d.queue.value)
-          return null;
-        d.queue.value = false;
-        return this;
-      }).append('div')
-        .attr('class', 'value-update')
-        .attr('transform', 'scale(1)')
-        .attr('opacity', 1)
-        .transition()
-        .duration(300)
-        .attr('transform', 'scale(80)')
-        .attr('opacity', 0)
-        .remove();
-
-      visualizer.translate(-root.y, -root.x);
+      var t = visualizer.translate(-root.y, -root.x);
+      if(heightAdjusted) {
+        svg.style('transform', t);
+      }
     },
     list: function(path, obj) {
       obj.listed = true;
@@ -359,10 +367,25 @@
             if(types.getType(map) === 'value') {
               map.value = null;
               var subCalled = false;
+
               visualizer.requester.subscribe(map.node.remotePath, function(subUpdate) {
                 if(subCalled) {
                   map.queue.value = true;
-                  visualizer.update(map);
+
+                  dom.selectAll('div.node').select(function(d) {
+                    if(!d.queue.value)
+                      return null;
+                    d.queue.value = false;
+                    return this;
+                  }).append('div')
+                    .attr('class', 'value')
+                    .style('transform', util.matrix()())
+                    .style('opacity', 1)
+                    .transition()
+                    .duration(700)
+                    .style('transform', util.matrix().scale(12)())
+                    .style('opacity', 0)
+                    .remove();
                 }
 
                 subCalled = true;
