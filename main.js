@@ -78,6 +78,8 @@
     }
   };
 
+  var dom, svg, tooltip, root;
+
   // from Flat UI colors, with love
   // https://flatuicolors.com/
 
@@ -87,17 +89,22 @@
   var COLOR_VALUE = '#3498db';
   // alizarin
   var COLOR_ACTION = '#e74c3c';
+  // amethyst
+  var COLOR_BROKER = '#9b59b6';
 
   var types = {
     colors: {
       node: COLOR_NODE,
       action: COLOR_ACTION,
-      value: COLOR_VALUE
+      value: COLOR_VALUE,
+      broker: COLOR_BROKER
     },
     getColor: function(d) {
       return types.colors[types.getType(d)];
     },
     getType: function(d) {
+      if(root.children.indexOf(d) > -1 || root.children[0].children[0] === d)
+        return 'broker';
       if(d.node.configs['$type'])
         return 'value';
       if(d.node.configs['$invokable'])
@@ -129,9 +136,7 @@
 
   var zoom = d3.behavior.zoom();
 
-  var dom, svg, tooltip, root;
   var i = 0;
-
   var visualizer = {
     tooltipValue: null,
     svgWidth: 0,
@@ -177,7 +182,15 @@
 
       tree = tree.size([height, width]);
 
+      var hiddenRoot;
+      if(root.children.length == 1) {
+        hiddenRoot = root.children[0];
+        root.children[0] = hiddenRoot.children[0];
+      }
       var nodes = tree.nodes(root);
+      if(root.children.length == 1) {
+        root.children[0] = hiddenRoot;
+      }
 
       // fixed size to 300px per layer
       nodes.forEach(function(node) {
@@ -192,6 +205,13 @@
 
       var links = tree.links(nodes).filter(function(link) {
         return !link.source.hidden && !link.target.hidden;
+      });
+
+      root.children.slice(1).forEach(function(child) {
+        links.push({
+          source: child,
+          target: root.children[0].children[0]
+        });
       });
 
       nodes = nodes.filter(function(node) {
@@ -519,17 +539,21 @@
       }).then(function(requester) {
         root = {
           children: [{
-            name: '/',
-            realName: '/',
-            children: [],
-            queue: {}
+            queue: {},
+            hidden: true,
+            children: [{
+              name: '/',
+              realName: '/',
+              children: [],
+              queue: {}
+            }]
           }],
           queue: {},
           hidden: true
         };
 
         visualizer.requester = requester;
-        visualizer.list('/conns', root.children[0]).then(function() {
+        visualizer.list('/conns', root.children[0].children[0]).then(function() {
           return new Promise(function(resolve, reject) {
             var called = false;
             var promises = [];
