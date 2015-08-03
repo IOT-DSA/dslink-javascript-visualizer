@@ -47,6 +47,34 @@
       }
 
       return f;
+    },
+    EventEmitter: function() {
+      this.listeners = {};
+    }
+  };
+
+  util.EventEmitter.prototype = {
+    emit: function(name) {
+      var args = [];
+      var count = 1;
+      var length = arguments.length;
+
+      for(; count < length; count++) {
+        args.push(arguments[count]);
+      }
+
+      (this.listeners[name] || []).forEach(function(f) {
+        f.apply(this, args);
+      }, this);
+    },
+    on: function(name, listener) {
+      if(!this.listeners[name])
+        this.listeners[name] = [];
+      this.listeners[name].push(listener);
+      return listener;
+    },
+    remove: function(name, listener) {
+      return this.listeners[name].splice(this.listeners[name].indexOf(listener), 1);
     }
   };
 
@@ -105,6 +133,7 @@
   var i = 0;
 
   var visualizer = {
+    tooltipValue: null,
     svgWidth: 0,
     svgHeight: 0,
     translateY: 0,
@@ -161,8 +190,13 @@
       var heightAdjusted = height >= visualizer.svgHeight || width >= visualizer.svgWidth;
       var diagonal = heightAdjusted ? normalDiagonal : skewedDiagonal(-yDiff, -xDiff);
 
-      var links = tree.links(nodes).slice(root.children.length);
-      nodes.splice(0, 1);
+      var links = tree.links(nodes).filter(function(link) {
+        return !link.source.hidden && !link.target.hidden;
+      });
+
+      nodes = nodes.filter(function(node) {
+        return !node.hidden;
+      });
 
       var link = svg.selectAll('.link')
           .data(links, function(d) { return d.target.node.remotePath; });
@@ -294,6 +328,11 @@
             e.style('transform', (e.style('transform') || '') + 'scale(1.33)');
           })
           .on('mouseout', function(d) {
+            if(visualizer.tooltipValue) {
+              d.value.remove('value', visualizer.tooltipValue);
+              visualizer.tooltipValue = null;
+            }
+
             tooltip.hide();
             var e = d3.select(this);
             e.style('transform', 'translate(' + d.y + 'px,' + d.x + 'px)');
@@ -375,14 +414,16 @@
             (obj._children || obj.children || (obj.children = [])).push(map);
 
             if(types.getType(map) === 'value') {
-              map.value = null;
+              map.value = new util.EventEmitter();
+              map.value.value = null;
               // for update selections
               map.updateS = [];
               var subCalled = false;
               var lastTime = Date.now();
 
               visualizer.requester.subscribe(map.node.remotePath, function(subUpdate) {
-                map.value = subUpdate.value;
+                map.value.emit('value', subUpdate.value);
+                map.value.value = subUpdate.value;
 
                 if(subCalled) {
                   if(Date.now() - lastTime <= 20 || document.hidden)
@@ -483,7 +524,8 @@
             children: [],
             queue: {}
           }],
-          queue: {}
+          queue: {},
+          hidden: true
         };
 
         visualizer.requester = requester;
@@ -574,9 +616,9 @@
         var type = d.node.configs['$type'];
         addTitleRow('type', type);
 
-        if(type === 'map' && d.value != null) {
+        if(type === 'map' && d.value.value != null) {
           addRow('value', 'text-align:left;');
-          var map = d.value._original;
+          var map = d.value.value._original;
           Object.keys(map).forEach(function(key) {
             var value = map[key];
             value = (value == null ? '<span style="color:#f1c40f;">null</span>' : value.toString());
@@ -585,10 +627,13 @@
             addTitleRow(key, value, 'background-color: rgba(0,0,0,0.1);');
           });
         } else {
-          var value = (d.value == null ? '<span style="color:#f1c40f;">null</span>' : d.value.toString());
+          var value = (d.value.value == null ? '<span id="value"><span style="color:#f1c40f;">null</span></span>' : '<span id="value">' + d.value.value.toString() + '</span>');
           if(value.trim().length == 0)
             value = '<span style="color:#f1c40f;">\' \'</span>';
           addTitleRow('value', value);
+          visualizer.tooltipValue = d.value.on('value', function(value) {
+            tooltip.node.select('#value').html((d.value.value == null ? '<span style="color:#f1c40f;">null</span>' : d.value.value.toString()));
+          });
         }
       }
 
