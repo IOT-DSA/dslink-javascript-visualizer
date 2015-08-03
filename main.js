@@ -81,7 +81,7 @@
   var tree = d3.layout.tree();
 
   var normalDiagonal = d3.svg.diagonal()
-      .projection(function(d) { return [d.y, d.x]; });
+      .projection(function(d) { return [Math.round(d.y), Math.round(d.x)]; });
 
   var skewedDiagonal = (function() {
     var ySkew;
@@ -89,7 +89,7 @@
 
     var d = d3.svg.diagonal()
         .projection(function(d) {
-          return [d.y + ySkew, d.x + xSkew];
+          return [Math.round(d.y + ySkew), Math.round(d.x + xSkew)];
         });
 
     return function(y, x) {
@@ -149,36 +149,46 @@
       tree = tree.size([height, width]);
 
       var nodes = tree.nodes(root);
+
       // fixed size to 300px per layer
       nodes.forEach(function(node) {
-        node.y = 300 * node.depth;
+        node.y = Math.max(300 * (node.depth - 1), 0);
       });
 
       var yDiff = root.y - (oldY || root.y);
       var xDiff = root.x - (oldX || root.x);
 
-      setTimeout(function() {
-        nodes.forEach(function(d) {
-          d.x0 = d.x;
-          d.y0 = d.y;
-        });
+      var heightAdjusted = height >= visualizer.svgHeight || width >= visualizer.svgWidth;
+      var diagonal = heightAdjusted ? normalDiagonal : skewedDiagonal(-yDiff, -xDiff);
 
-        if(height < visualizer.svgHeight && width < visualizer.svgWidth) {
-          svg.attr({
-            height: height,
-            width: width
+      var links = tree.links(nodes).slice(root.children.length);
+      nodes.splice(0, 1);
+
+      var link = svg.selectAll('.link')
+          .data(links, function(d) { return d.target.node.remotePath; });
+
+      setTimeout(function() {
+        window.requestAnimationFrame(function() {
+          nodes.forEach(function(d) {
+            d.x0 = d.x;
+            d.y0 = d.y;
           });
 
-          visualizer.svgHeight = height;
-          visualizer.svgWidth = width;
+          if(height < visualizer.svgHeight && width < visualizer.svgWidth) {
+            svg.attr({
+              height: height,
+              width: width
+            });
 
-          svg.style('transform', util.matrix().translate(visualizer.translateY, visualizer.translateX));
-        }
+            visualizer.svgHeight = height;
+            visualizer.svgWidth = width;
+
+            svg.style('transform', util.matrix().translate(visualizer.translateY, visualizer.translateX));
+
+            link.attr('d', normalDiagonal);
+          }
+        });
       }, 400);
-
-      var heightAdjusted = height >= visualizer.svgHeight || width >= visualizer.svgWidth;
-
-      var diagonal = heightAdjusted ? normalDiagonal : skewedDiagonal(-yDiff, -xDiff);
 
       if(heightAdjusted) {
         svg.attr({
@@ -189,11 +199,6 @@
         visualizer.svgHeight = height;
         visualizer.svgWidth = width;
       }
-
-      var links = tree.links(nodes);
-
-      var link = svg.selectAll('.link')
-          .data(links, function(d) { return d.target.node.remotePath; });
 
       link.attr('d', function(d) {
             return diagonal({
@@ -251,7 +256,7 @@
       var node = dom.selectAll('div.node')
           .data(nodes, function(d) { return d.node.remotePath; })
           .style('background-color', function(d) {
-            if(((!d.children && !d._children) || (d.children && !d._children)) && d.listed && types.getType(d) !== 'action')
+            if(((!d.children && !d._children) || (d.children && !d._children)) && d.queue.listed && types.getType(d) !== 'action')
               return 'white';
             return types.getColor(d);
           });
@@ -271,6 +276,10 @@
           .attr('class', 'node')
           .style('opacity', 0)
           .style('background-color', function(d) {
+            if(!d.queue.listed)
+              return types.getColor(d);
+            if(((!d.children && !d._children) || (d.children && !d._children)) && types.getType(d) !== 'action')
+              return 'white';
             return types.getColor(d);
           })
           .style('border-color', function(d) {
@@ -290,7 +299,7 @@
             e.style('transform', 'translate(' + d.y + 'px,' + d.x + 'px)');
           })
           .on('click', function(d) {
-            if(!d.listed) {
+            if(!d.queue.listed) {
               visualizer.list(d.node.remotePath, d).then(function() {
                 visualizer.update(d);
               });
@@ -332,17 +341,19 @@
           });
       });
 
-      var t = visualizer.translate(-root.y, -root.x);
+      var t = visualizer.translate(0, -root.x);
       if(heightAdjusted) {
         svg.style('transform', t);
       }
     },
     list: function(path, obj) {
-      obj.listed = true;
+      obj.queue.listed = true;
       var called = false;
       return new Promise(function(resolve, reject) {
         console.log(path);
         visualizer.requester.list(path).on('data', function(update) {
+          if(!obj.node)
+            obj.node = update.node;
           var children = update.node.children;
           var keys = Object.keys(children);
 
@@ -356,9 +367,8 @@
               realName: child,
               children: [],
               node: node,
-              listed: false,
               queue: {
-                value: false
+                listed: false
               }
             };
 
@@ -366,38 +376,58 @@
 
             if(types.getType(map) === 'value') {
               map.value = null;
+              // for update selections
+              map.updateS = [];
               var subCalled = false;
 
               visualizer.requester.subscribe(map.node.remotePath, function(subUpdate) {
-                if(subCalled) {
-                  map.queue.value = true;
+                map.value = subUpdate.value;
 
-                  dom.selectAll('div.node').select(function(d) {
-                    if(!d.queue.value)
-                      return null;
-                    d.queue.value = false;
-                    return this;
-                  }).append('div')
-                    .attr('class', 'value')
-                    .style('transform', util.matrix()())
+                if(subCalled) {
+                  var subNode = map.updateS.length > 0 ? (function() {
+                    var e = map.updateS.splice(0, 1)[0];
+                    clearTimeout(e.timer);
+                    return e.node;
+                  }()) : dom.selectAll('div.node').select(function(d) {
+                    if(d === map)
+                      return this;
+                    return null;
+                  }).append('div').attr('class', 'value');
+
+                  subNode.style('transform', util.matrix()())
                     .style('opacity', 1)
                     .transition()
                     .duration(700)
                     .style('transform', util.matrix().scale(12)())
-                    .style('opacity', 0)
-                    .remove();
+                    .style('opacity', 0);
+
+                  setTimeout(function() {
+                    window.requestAnimationFrame(function() {
+                      subNode.style('opacity', 0).style('transform', util.matrix()());
+                      var m = {
+                        node: subNode,
+                        timer: setTimeout(function() {
+                          map.updateS.splice(map.updateS.indexOf(m), 1);
+                          subNode.remove();
+                        }, 30000 / (map.updateS.length + 1))
+                      };
+
+                      map.updateS.push(m);
+                    });
+                  }, 700);
                 }
 
                 subCalled = true;
-                map.value = subUpdate.value;
               });
             }
 
-            if(types.getType(map) === 'action') {
+            /*
+            if(types.getType(map) !== 'node') {
               visualizer.list(map.node.remotePath, map).then(function() {
                 visualizer.toggle(map);
               });
             }
+            */
           }
 
           var removeChild = function(change) {
@@ -441,16 +471,72 @@
       return link.connect().then(function() {
         return link.onRequesterReady;
       }).then(function(requester) {
-        root = {};
+        root = {
+          children: [{
+            name: '/',
+            realName: '/',
+            children: [],
+            queue: {}
+          }],
+          queue: {}
+        };
 
         visualizer.requester = requester;
-        visualizer.list('/', root).then(function() {
-          root.children.forEach(function(child) {
-            if(child.name === 'conns')
-              root = child;
-          })
+        visualizer.list('/conns', root.children[0]).then(function() {
+          return new Promise(function(resolve, reject) {
+            var called = false;
+            var promises = [];
+            visualizer.requester.list('/upstream').on('data', function(update) {
+              var children = update.node.children;
+              var keys = Object.keys(children);
 
-          return visualizer.list('/conns', root);
+              var addChild = function(child, initial) {
+                initial = initial || true;
+                if(initial) {
+                  root.children.push({
+                    name: child,
+                    realName: child,
+                    children: [],
+                    queue: {}
+                  });
+                  promises.push(visualizer.list(children[child].remotePath + '/conns', root.children[root.children.length - 1]));
+                }
+              };
+
+              var removeChild = function(change) {
+                [].concat(root.children).forEach(function(child, index) {
+                  if(child.realName === change)
+                    root.children.splice(index, 1);
+                });
+              };
+
+              if(!called) {
+                keys.forEach(addChild);
+                called = true;
+
+                Promise.all(promises).then(function() {
+                  resolve();
+                }).catch(function(e) {
+                  reject(e);
+                })
+              } else {
+                update.changes.forEach(function(change) {
+                  if(change.indexOf('@') === 0 || change.indexOf('$') === 0)
+                    return;
+
+                  if(keys.indexOf(change) > 0) {
+                    if(children[change].configs['$disconnectedTs']) {
+                      removeChild(change);
+                      return;
+                    }
+                    addChild(change, false);
+                  } else {
+                    removeChild(change);
+                  }
+                });
+              }
+            });
+          });
         }).then(visualizer.done);
       }).catch(function(err) {
         console.log(err.$thrownJsError ? err.$thrownJsError.stack : err.stack);
