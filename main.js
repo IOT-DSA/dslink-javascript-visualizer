@@ -379,11 +379,16 @@
               // for update selections
               map.updateS = [];
               var subCalled = false;
+              var lastTime = Date.now();
 
               visualizer.requester.subscribe(map.node.remotePath, function(subUpdate) {
                 map.value = subUpdate.value;
 
                 if(subCalled) {
+                  if(Date.now() - lastTime <= 20 || document.hidden)
+                    return;
+                  lastTime = Date.now();
+
                   var subNode = map.updateS.length > 0 ? (function() {
                     var e = map.updateS.splice(0, 1)[0];
                     clearTimeout(e.timer);
@@ -397,7 +402,7 @@
                   subNode.style('transform', util.matrix()())
                     .style('opacity', 1)
                     .transition()
-                    .duration(700)
+                    .duration(300)
                     .style('transform', util.matrix().scale(12)())
                     .style('opacity', 0);
 
@@ -414,7 +419,7 @@
 
                       map.updateS.push(m);
                     });
-                  }, 700);
+                  }, 300);
                 }
 
                 subCalled = true;
