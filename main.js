@@ -382,21 +382,15 @@
         })
         el.transition().duration(400)
           .style('opacity', 0)
-          .styleTween('transform', function(d) {
-            return d3.interpolateString(
-                d3.select(this).style('transform'),
-                util.matrix().translate(n.y, n.x)());
-          })
+          .style('transform', util.matrix().translate(n.y, n.x)())
           .remove();
       });
 
       [node, text, nodeEnter, textEnter].forEach(function(el) {
         el.transition().duration(400)
           .style('opacity', 1)
-          .styleTween('transform', function(d) {
-            return d3.interpolateString(
-                d3.select(this).style('transform'),
-                util.matrix().translate(d.y, d.x)());
+          .style('transform', function(d) {
+            return util.matrix().translate(d.y, d.x)();
           });
       });
 
@@ -405,7 +399,8 @@
         svg.style('transform', t);
       }
     },
-    list: function(path, obj) {
+    list: function(path, obj, opt) {
+      opt = opt || {};
       obj.queue.listed = true;
       var called = false;
       return new Promise(function(resolve, reject) {
@@ -417,6 +412,9 @@
           var keys = Object.keys(children);
 
           var addChild = function(child) {
+            if(opt.blacklist && opt.blacklist.indexOf(child) > -1)
+              return;
+
             var node = children[child];
             if(node.configs['$disconnectedTs'])
               return;
@@ -487,16 +485,18 @@
               });
             }
 
-            /*
-            if(types.getType(map) !== 'node') {
+            // so we can fill in params and columns within tooltips
+            if(types.getType(map) === 'action') {
               visualizer.list(map.node.remotePath, map).then(function() {
                 visualizer.toggle(map);
               });
             }
-            */
           }
 
           var removeChild = function(change) {
+            if(opt.blacklist && opt.blacklist.indexOf(change) > -1)
+              return;
+
             [].concat(obj._children || obj.children).forEach(function(child, index) {
               if(child.realName === change)
                 (obj._children || obj.children).splice(index, 1);
@@ -510,7 +510,6 @@
             update.changes.forEach(function(change) {
               if(change.indexOf('@') === 0 || change.indexOf('$') === 0)
                 return;
-
               if(keys.indexOf(change) > 0) {
                 if(children[change].configs['$disconnectedTs']) {
                   removeChild(change);
@@ -570,7 +569,18 @@
                     children: [],
                     queue: {}
                   });
-                  promises.push(visualizer.list(children[child].remotePath + '/conns', root.children[root.children.length - 1]));
+                  promises.push((new Promise(function(resolve, reject) {
+                    var subscribeHandler = function(subUpdate) {
+                      visualizer.requester.unsubscribe('/sys/upstream/' + child + '/name', subscribeHandler);
+                      resolve(subUpdate.value);
+                    };
+
+                    visualizer.requester.subscribe('/sys/upstream/' + child + '/name', subscribeHandler);
+                  })).then(function(value) {
+                    return visualizer.list(children[child].remotePath + '/conns', root.children[root.children.length - 1], {
+                      blacklist: [value]
+                    });
+                  }));
                 }
               };
 
