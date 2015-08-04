@@ -201,14 +201,12 @@
       });
 
       nodes.forEach(function(node) {
-        if(!node.queue.broker || !node.parent || !node.parent.children || node.parent.children.length == 0 || !node.parent.children[0].hidden)
+        if(!node.queue.broker || !node.link)
           return;
 
-        node.parent.children[0].children.forEach(function(c) {
-          links.push({
-            source: node,
-            target: c
-          });
+        links.push({
+          source: node,
+          target: node.link
         });
       });
 
@@ -576,8 +574,8 @@
         };
 
         visualizer.requester = requester;
-        var upstream = function(path, depth, blacklist) {
-          blacklist = blacklist || [];
+        var upstream = function(path, depth, opt) {
+          opt = opt || {};
 
           var mapName = path.split('/')[path.split('/').length - 1] || '/';
           var map = {
@@ -586,12 +584,11 @@
             queue: {
               broker: true
             },
+            link: opt.link || null,
             children: []
           };
 
-          return visualizer.list(path + '/conns', map, {
-            blacklist: blacklist
-          }).then(function() {
+          return visualizer.list(path + '/conns', map, opt).then(function() {
             var promises = [];
             root.children.push(map);
 
@@ -626,7 +623,10 @@
 
                   visualizer.requester.subscribe(path + '/sys/upstream/' + child + '/name', subscribeHandler);
                 })).then(function(value) {
-                  return upstream(path + '/upstream/' + child, depth + 1, value);
+                  return upstream(path + '/upstream/' + child, depth + 1, {
+                    blacklist: [value],
+                    link: map
+                  });
                 }));
               }
             };
