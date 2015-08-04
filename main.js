@@ -103,7 +103,7 @@
       return types.colors[types.getType(d)];
     },
     getType: function(d) {
-      if(root.children.indexOf(d) > -1 || root.children[0].children[0] === d)
+      if(d.queue.broker)
         return 'broker';
       if(d.node.configs['$type'])
         return 'value';
@@ -182,17 +182,10 @@
 
       tree = tree.size([height, width]);
 
-      var hiddenRoot;
-      if(root.children.length == 1) {
-        hiddenRoot = root.children[0];
-        root.children[0] = hiddenRoot.children[0];
-      }
       var nodes = tree.nodes(root);
-      if(root.children.length == 1) {
-        root.children[0] = hiddenRoot;
-      }
 
       // fixed size to 300px per layer
+      // move depth over to the left one to account for hidden root
       nodes.forEach(function(node) {
         node.y = Math.max(300 * (node.depth - 1), 0);
       });
@@ -207,10 +200,15 @@
         return !link.source.hidden && !link.target.hidden;
       });
 
-      root.children.slice(1).forEach(function(child) {
-        links.push({
-          source: child,
-          target: root.children[0].children[0]
+      nodes.forEach(function(node) {
+        if(!node.queue.broker || !node.parent || !node.parent.children || node.parent.children.length == 0 || !node.parent.children[0].hidden)
+          return;
+
+        node.parent.children[0].children.forEach(function(c) {
+          links.push({
+            source: node,
+            target: c
+          });
         });
       });
 
@@ -399,6 +397,39 @@
         svg.style('transform', t);
       }
     },
+    _list: function(path, addChild, removeChild) {
+      var called = false;
+      return new Promise(function(resolve, reject) {
+        visualizer.requester.list(path).on('data', function(update) {
+          var children = update.node.children;
+          var keys = Object.keys(children);
+
+          if(!called) {
+            keys.forEach(function(change) {
+              addChild(change, children);
+            });
+            called = true;
+
+            resolve();
+          } else {
+            update.changes.forEach(function(change) {
+              if(change.indexOf('@') === 0 || change.indexOf('$') === 0)
+                return;
+
+              if(keys.indexOf(change) > 0) {
+                if(children[change].configs['$disconnectedTs']) {
+                  removeChild(change, children);
+                  return;
+                }
+                addChild(change, children, false);
+              } else {
+                removeChild(change, children);
+              }
+            });
+          }
+        });
+      })
+    },
     list: function(path, obj, opt) {
       opt = opt || {};
       obj.queue.listed = true;
@@ -537,88 +568,85 @@
         return link.onRequesterReady;
       }).then(function(requester) {
         root = {
-          children: [{
-            queue: {},
-            hidden: true,
-            children: [{
-              name: '/',
-              realName: '/',
-              children: [],
-              queue: {}
-            }]
-          }],
-          queue: {},
+          queue: {
+            depth: 1
+          },
+          children: [],
           hidden: true
         };
 
         visualizer.requester = requester;
-        visualizer.list('/conns', root.children[0].children[0]).then(function() {
-          return new Promise(function(resolve, reject) {
-            var called = false;
+        var upstream = function(path, depth, blacklist) {
+          blacklist = blacklist || [];
+
+          var mapName = path.split('/')[path.split('/').length - 1] || '/';
+          var map = {
+            name: mapName,
+            realName: mapName,
+            queue: {
+              broker: true
+            },
+            children: []
+          };
+
+          return visualizer.list(path + '/conns', map, {
+            blacklist: blacklist
+          }).then(function() {
             var promises = [];
-            visualizer.requester.list('/upstream').on('data', function(update) {
-              var children = update.node.children;
-              var keys = Object.keys(children);
+            root.children.push(map);
 
-              var addChild = function(child, initial) {
-                initial = initial || true;
-                if(initial) {
-                  root.children.push({
-                    name: child,
-                    realName: child,
-                    children: [],
-                    queue: {}
-                  });
-                  promises.push((new Promise(function(resolve, reject) {
-                    var subscribeHandler = function(subUpdate) {
-                      visualizer.requester.unsubscribe('/sys/upstream/' + child + '/name', subscribeHandler);
-                      resolve(subUpdate.value);
-                    };
-
-                    visualizer.requester.subscribe('/sys/upstream/' + child + '/name', subscribeHandler);
-                  })).then(function(value) {
-                    return visualizer.list(children[child].remotePath + '/conns', root.children[root.children.length - 1], {
-                      blacklist: [value]
-                    });
-                  }));
+            var addChild = function(child, children, initial) {
+              initial = initial || true;
+              if(initial) {
+                if(root.queue.depth < (depth + 1)) {
+                  root = {
+                    queue: {
+                      depth: depth + 1
+                    },
+                    children: [root],
+                    hidden: true
+                  };
                 }
-              };
 
-              var removeChild = function(change) {
-                [].concat(root.children).forEach(function(child, index) {
-                  if(child.realName === change)
-                    root.children.splice(index, 1);
-                });
-              };
-
-              if(!called) {
-                keys.forEach(addChild);
-                called = true;
-
-                Promise.all(promises).then(function() {
-                  resolve();
-                }).catch(function(e) {
-                  reject(e);
-                })
-              } else {
-                update.changes.forEach(function(change) {
-                  if(change.indexOf('@') === 0 || change.indexOf('$') === 0)
-                    return;
-
-                  if(keys.indexOf(change) > 0) {
-                    if(children[change].configs['$disconnectedTs']) {
-                      removeChild(change);
-                      return;
-                    }
-                    addChild(change, false);
-                  } else {
-                    removeChild(change);
+                root = root.queue.depth == (depth + 1) ? root : (function() {
+                  var r = root;
+                  var i = root.queue.depth;
+                  for(; i < depth; i++) {
+                    r = r.children[0];
                   }
-                });
+
+                  return r;
+                }());
+
+                promises.push((new Promise(function(resolve, reject) {
+                  var subscribeHandler = function(subUpdate) {
+                    visualizer.requester.unsubscribe(path + '/sys/upstream/' + child + '/name', subscribeHandler);
+                    resolve(subUpdate.value);
+                  };
+
+                  visualizer.requester.subscribe(path + '/sys/upstream/' + child + '/name', subscribeHandler);
+                })).then(function(value) {
+                  return upstream(path + '/upstream/' + child, depth + 1);
+                }));
               }
+            };
+
+            var removeChild = function(change, children) {
+              [].concat(root.children).forEach(function(child, index) {
+                if(child.realName === change)
+                  root.children.splice(index, 1);
+              });
+            };
+
+            return visualizer._list(path + '/upstream', addChild, removeChild).then(function() {
+              return Promise.all(promises);
             });
-          });
-        }).then(visualizer.done);
+          }).then(function() {
+            return map;
+          })
+        };
+
+        upstream('', 1).then(visualizer.done);
       }).catch(function(err) {
         console.log(err.$thrownJsError ? err.$thrownJsError.stack : err.stack);
       });
