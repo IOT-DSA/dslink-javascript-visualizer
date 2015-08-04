@@ -626,7 +626,7 @@
 
                   visualizer.requester.subscribe(path + '/sys/upstream/' + child + '/name', subscribeHandler);
                 })).then(function(value) {
-                  return upstream(path + '/upstream/' + child, depth + 1);
+                  return upstream(path + '/upstream/' + child, depth + 1, value);
                 }));
               }
             };
