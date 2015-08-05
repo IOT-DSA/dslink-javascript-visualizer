@@ -92,6 +92,8 @@
   // amethyst
   var COLOR_BROKER = '#9b59b6';
 
+  var TRACE_REQUESTER = '/sys/trace/traceRequester';
+
   var types = {
     colors: {
       node: COLOR_NODE,
@@ -110,6 +112,13 @@
       if(d.node.configs['$invokable'])
         return 'action';
       return 'node';
+    },
+    getColorFromTrace: function(d) {
+      if(d.type === 'subscribe' || d.type === 'unsubscribe')
+        return types.colors.value;
+      if(d.type === 'invoke')
+        return types.colors.action;
+      return types.colors.node;
     }
   };
 
@@ -162,6 +171,8 @@
       }
     },
     update: function(n) {
+      var paths = {};
+
       var depthSize = [1];
       var depth = function(obj, d) {
         if(obj.children && obj.children.length > 0) {
@@ -200,7 +211,13 @@
         return !link.source.hidden && !link.target.hidden;
       });
 
+      nodes = nodes.filter(function(node) {
+        return !node.hidden;
+      });
+
       nodes.forEach(function(node) {
+        paths[node.node.remotePath] = node;
+
         if(!node.queue.broker || !node.link)
           return;
 
@@ -210,12 +227,10 @@
         });
       });
 
-      nodes = nodes.filter(function(node) {
-        return !node.hidden;
-      });
-
       var link = svg.selectAll('.link')
-          .data(links, function(d) { return d.target.node.remotePath; });
+          .data(links, function(d) {
+            return d.target.node.remotePath;
+          });
 
       setTimeout(function() {
         window.requestAnimationFrame(function() {
@@ -390,6 +405,54 @@
           });
       });
 
+      var trace = svg.selectAll('.trace')
+          .data(nodes.filter(function(node) {
+            return node.links && node.links.length > 0;
+          }).reduce(function(original, node) {
+            return original.concat(node.links);
+          }, []), function(d) {
+            return d.path + '/' + d.origin;
+          });
+
+      var traceFunc = function(d) {
+        var path = d.path;
+        var node = paths[path];
+
+        while(node === void 0) {
+          if(path.lastIndexOf('/') === 0) {
+            d.hidden = true;
+            return null;
+          }
+          path = path.substring(0, path.lastIndexOf('/'));
+          node = paths[path];
+        }
+
+        return diagonal({
+          source: paths[d.source],
+          target: node
+        });
+      };
+
+      var traceEnter = trace.enter().insert('path', 'path.link')
+          .attr('class', 'trace')
+          .attr('d', traceFunc)
+          .attr('stroke', function(d) {
+            return types.getColorFromTrace(d.type);
+          });
+
+      trace.transition()
+          .duration(400)
+          .attr('d', traceFunc)
+          .attr('opacity', function(d) {
+            if(d.hidden) {
+              d.hidden = false;
+              return 0;
+            }
+            return 1;
+          });
+
+      trace.exit().remove();
+
       var t = visualizer.translate(0, -root.x);
       if(heightAdjusted) {
         svg.style('transform', t);
@@ -457,6 +520,9 @@
                 listed: false
               }
             };
+
+            if(opt.addChild)
+              opt.addChild(map, child, children);
 
             (obj._children || obj.children || (obj.children = [])).push(map);
 
@@ -527,8 +593,11 @@
               return;
 
             [].concat(obj._children || obj.children).forEach(function(child, index) {
-              if(child.realName === change)
+              if(child.realName === change) {
+                if(opt.removeChild)
+                  opt.removeChild(child, change, children);
                 (obj._children || obj.children).splice(index, 1);
+              }
             });
           };
 
@@ -588,7 +657,50 @@
             children: []
           };
 
-          return visualizer.list(path + '/conns', map, opt).then(function() {
+          return visualizer.list(path + '/conns', map, {
+            blacklist: opt.blacklist || [],
+            addChild: function(m, change, children) {
+              // TODO: Get better support for this, once an API is implemented to get broker path
+              if(m.node.remotePath === '/conns/visualizer')
+                return;
+                
+              // code for trace requester
+              // TODO: Only trace actual requesters
+              m.links = [];
+              visualizer.requester.invoke(path + TRACE_REQUESTER, {
+                requester: m.node.remotePath,
+                sessionId: null
+              }).on('data', function(invokeUpdate) {
+                if(!invokeUpdate.updates)
+                  return;
+
+                var r = invokeUpdate.rows;
+                r.forEach(function(row) {
+                  var added = row[4] === '+';
+                  var rid = row[2];
+
+                  if(added) {
+                    m.links.push({
+                      source: m.node.remotePath,
+                      path: row[0],
+                      type: row[1],
+                      rid: row[2],
+                      trace: true
+                    });
+                  } else {
+                    // TODO: Not sure if this supports unsubscribe
+                    [].concat(m.links).forEach(function(link) {
+                      if(link.path === row[0] && link.rid === rid && link.type === row[1])
+                        m.links.splice(m.links.indexOf(link), 1);
+                    });
+                  }
+                });
+              });
+            },
+            removeChild: function(m, change, children) {
+
+            }
+          }).then(function() {
             var promises = [];
             root.children.push(map);
 
