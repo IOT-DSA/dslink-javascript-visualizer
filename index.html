@@ -209,11 +209,21 @@
 
       .link, .trace {
         fill: none;
-        stroke-width: 1.5px;
       }
 
       .link {
         stroke: #ecf0f1;
+        stroke-width: 1.5px;
+      }
+
+      .trace {
+        stroke-width: 2px;
+        stroke-dasharray: 10;
+        opacity: 0.7;
+      }
+
+      .trace:hover {
+        stroke-width: 3px;
       }
 
       .text {

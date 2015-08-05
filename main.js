@@ -281,7 +281,7 @@
           .duration(400)
           .attr('d', diagonal);
 
-      link.enter().append('path')
+      link.enter().insert('path', 'path.trace')
           .attr('class', 'link')
           .attr('d', function(d) {
             var map = {
@@ -409,6 +409,7 @@
           .data(nodes.filter(function(node) {
             return node.links && node.links.length > 0;
           }).reduce(function(original, node) {
+            console.log(node);
             return original.concat(node.links);
           }, []), function(d) {
             return d.path + '/' + d.origin;
@@ -433,25 +434,19 @@
         });
       };
 
-      var traceEnter = trace.enter().insert('path', 'path.link')
+      var traceEnter = trace.enter().append('path')
           .attr('class', 'trace')
           .attr('d', traceFunc)
           .attr('stroke', function(d) {
+            console.log(d.type);
             return types.getColorFromTrace(d.type);
           });
 
       trace.transition()
           .duration(400)
-          .attr('d', traceFunc)
-          .attr('opacity', function(d) {
-            if(d.hidden) {
-              d.hidden = false;
-              return 0;
-            }
-            return 1;
-          });
+          .attr('d', traceFunc);
 
-      trace.exit().remove();
+      // trace.exit().remove();
 
       var t = visualizer.translate(0, -root.x);
       if(heightAdjusted) {
@@ -663,7 +658,7 @@
               // TODO: Get better support for this, once an API is implemented to get broker path
               if(m.node.remotePath === '/conns/visualizer')
                 return;
-                
+
               // code for trace requester
               // TODO: Only trace actual requesters
               m.links = [];
@@ -674,7 +669,7 @@
                 if(!invokeUpdate.updates)
                   return;
 
-                var r = invokeUpdate.rows;
+                var r = invokeUpdate.updates;
                 r.forEach(function(row) {
                   var added = row[4] === '+';
                   var rid = row[2];
@@ -695,6 +690,9 @@
                     });
                   }
                 });
+
+                if(svg)
+                  visualizer.update(m);
               });
             },
             removeChild: function(m, change, children) {
@@ -792,7 +790,7 @@
 
         if(type === 'map' && d.value.value != null) {
           addRow('value', 'text-align:left;');
-          var map = d.value.value._original;
+          var map = d.value.value;
           Object.keys(map).forEach(function(key) {
             var value = map[key];
             value = (value == null ? '<span style="color:#f1c40f;">null</span>' : value.toString());
