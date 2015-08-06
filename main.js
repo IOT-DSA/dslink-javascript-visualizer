@@ -48,6 +48,16 @@
 
       return f;
     },
+    asyncFor: function(f, to, callback) {
+      var chain = Promise.resolve();
+      for(; f < to; f++) {
+        chain.then(function() {
+          return callback(f);
+        });
+      }
+
+      return chain;
+    },
     EventEmitter: function() {
       this.listeners = {};
     }
@@ -78,7 +88,15 @@
     }
   };
 
-  var dom, svg, tooltip, root;
+  var div, dom, svg, tooltip, root, paths;
+
+  var windowWidth = window.innerWidth;
+  var windowHeight = window.innerHeight;
+
+  window.addEventListener('resize', function() {
+    windowWidth = window.innerWidth;
+    windowHeight = window.innerHeight;
+  });
 
   // from Flat UI colors, with love
   // https://flatuicolors.com/
@@ -101,6 +119,11 @@
       value: COLOR_VALUE,
       broker: COLOR_BROKER
     },
+    traceColors: {
+      list: COLOR_NODE,
+      invoke: COLOR_ACTION,
+      subscribe: COLOR_VALUE
+    },
     getColor: function(d) {
       return types.colors[types.getType(d)];
     },
@@ -114,11 +137,7 @@
       return 'node';
     },
     getColorFromTrace: function(d) {
-      if(d.type === 'subscribe' || d.type === 'unsubscribe')
-        return types.colors.value;
-      if(d.type === 'invoke')
-        return types.colors.action;
-      return types.colors.node;
+      return types.traceColors[d.type];
     }
   };
 
@@ -171,7 +190,7 @@
       }
     },
     update: function(n) {
-      var paths = {};
+      paths = {};
 
       var depthSize = [1];
       var depth = function(obj, d) {
@@ -372,6 +391,10 @@
             if(!d.queue.listed) {
               visualizer.list(d.node.remotePath, d).then(function() {
                 visualizer.update(d);
+
+                var pos = visualizer.getScreenPos(d);
+                if(pos.x <= 0 || pos.y <= 0 || pos.x >= innerWidth || pos.y >= innerHeight)
+                  visualizer.moveTo(d);
               });
               return;
             }
@@ -399,7 +422,11 @@
 
       [node, text, nodeEnter, textEnter].forEach(function(el) {
         el.transition().duration(400)
-          .style('opacity', 1)
+          .style('opacity', function(d) {
+            if((el === text || el === textEnter) && d.node.configs['$disconnectedTs'])
+              return 0.5;
+            return 1;
+          })
           .style('transform', function(d) {
             return util.matrix().translate(d.y, d.x)();
           });
@@ -463,6 +490,41 @@
           })
           .on('mouseout', function(d) {
             tooltip.hide();
+          })
+          .on('click', function(d) {
+            var path = d.path;
+            var node = paths[path];
+            var parts = [];
+
+            while(node === void 0) {
+              if(path.lastIndexOf('/') === 0) {
+                break;
+              }
+              parts.push(path.splice(path.lastIndexOf('/') + 1));
+              node = paths[path];
+            }
+
+            if(node === void 0)
+              return;
+
+            if(node !== parts[d.path]) {
+              var i = 0;
+              var l = parts.length;
+              util.asyncFor(i, l, function(i) {
+                var p = node.node.remotePath + '/' + parts.slice(0, i + 1).join('/');
+                if(paths[p] && paths[p]._children) {
+                  visualizer.toggle(paths[p]);
+                } else {
+                  if(i > 1)
+                    return visualizer.list(p, paths[node.node.remotePath + '/' + parts.slice(0, i).join('/')].find(function(e) {
+                      return e.realName === parts[i + 1];
+                    }));
+                }
+              }).then(function() {
+                visualizer.update(node);
+                visualizer.moveTo(paths[d.path]);
+              });
+            }
           });
 
       trace.transition()
@@ -496,10 +558,6 @@
                 return;
 
               if(keys.indexOf(change) > 0) {
-                if(children[change].configs['$disconnectedTs']) {
-                  removeChild(change, children);
-                  return;
-                }
                 addChild(change, children, false);
               } else {
                 removeChild(change, children);
@@ -627,10 +685,6 @@
               if(change.indexOf('@') === 0 || change.indexOf('$') === 0)
                 return;
               if(keys.indexOf(change) > 0) {
-                if(children[change].configs['$disconnectedTs']) {
-                  removeChild(change);
-                  return;
-                }
                 addChild(change);
               } else {
                 removeChild(change);
@@ -679,13 +733,12 @@
             blacklist: opt.blacklist || [],
             addChild: function(m, change, children) {
               // TODO: Get better support for this, once an API is implemented to get broker path
-              //if(m.node.remotePath === '/conns/visualizer')
-              //  return;
+              if(m.node.remotePath === '/conns/visualizer')
+                return;
 
               // code for trace requester
               // TODO: Only trace actual requesters
               m.links = [];
-              var lastUpdate = Date.now();
               var trace = {
                 list: {},
                 subscribe: {},
@@ -696,54 +749,53 @@
                 requester: m.node.remotePath.substring(path.length),
                 sessionId: null
               }).on('data', function(invokeUpdate) {
-                try {
-                  if(!invokeUpdate.rows)
-                    return;
+                console.log(invokeUpdate.rows);
 
-                  var r = invokeUpdate.rows;
-                  var shouldUpdate = false;
-                  r.forEach(function(row) {
-                    var added = row[4] === '+';
-                    var rid = row[2];
+                var r = invokeUpdate.rows;
+                var shouldUpdate = false;
+                r.forEach(function(row) {
+                  var added = row[4] === '+';
+                  var rid = row[2];
 
-                    if(added) {
-                      var t = trace[row[1]][path + row[0]];
-                      if(t) {
-                        t.amount++;
-                      } else {
-                        m.links.push({
-                          source: m.node.remotePath,
-                          path: path + row[0],
-                          type: row[1],
-                          rid: row[2],
-                          amount: 1,
-                          trace: true
-                        });
+                  if(added) {
+                    var t = trace[row[1]][path + row[0]];
+                    if(t) {
+                      t.amount++;
+                    } else if(path + row[0] !== m.node.remotePath) {
+                      m.links.push({
+                        source: m.node.remotePath,
+                        path: path + row[0],
+                        type: row[1],
+                        rid: row[2],
+                        amount: 1,
+                        trace: true
+                      });
 
-                        trace[row[1]][path + row[0]] = m.links[m.links.length - 1];
-                        shouldUpdate = true;
-                      }
-                    } else {
-                      // TODO: Not sure if this supports unsubscribe
+                      trace[row[1]][path + row[0]] = m.links[m.links.length - 1];
+                      shouldUpdate = true;
+                    }
+                  } else {
+                    // TODO: Not sure if this supports unsubscribe
+                    setTimeout(function() {
                       [].concat(m.links).forEach(function(link) {
-                        if(link.path === row[0] && link.rid === rid && link.type === row[1]) {
+                        if(link.path === row[0] && link.type === row[1]) {
                           if(link.amount > 1) {
-                            link.amount--;
+                            link.amount = link.amount - 1;
                           } else {
                             m.links.splice(m.links.indexOf(link), 1);
-                            shouldUpdate = true;
+                            delete trace[row[1]][path + row[0]];
                           }
                         }
                       });
-                    }
-                  });
 
-                  if(shouldUpdate && Date.now() - lastUpdate < 1000 && svg) {
-                    visualizer.update(m);
+                      visualizer.update(m);
+                    }, 400);
                   }
+                });
 
-                  lastUpdate = Date.now();
-                } catch(e) {}
+                if(shouldUpdate && svg) {
+                  visualizer.update(m);
+                }
               });
             },
             removeChild: function(m, change, children) {
@@ -818,6 +870,18 @@
         y: (visualizer.translateX + d.x) * zoom.scale() + zoom.translate()[1]
       };
     },
+    moveTo: function(d) {
+      var pos = visualizer.getScreenPos(d);
+      var translate = zoom.translate();
+      var scale = zoom.scale();
+
+      var x = (-d.y - visualizer.translateY) * scale + 400;
+      var y = (-d.x - visualizer.translateX) * scale + 400;
+      zoom.translate([x, y]);
+      div.transition()
+          .duration(400)
+          .style('transform', util.matrix().scale(scale).translate(x, y)());
+    },
     showTooltip: function(d) {
       var text = '';
 
@@ -883,13 +947,17 @@
         }
       }
 
+      if(d.node.configs['$disconnectedTs']) {
+        addRow('disconnected', 'color: #bdc3c7;');
+      }
+
       var pos = visualizer.getScreenPos(d);
       tooltip.show(pos.x, pos.y, text);
     },
     done: function() {
       console.log('done');
 
-      var div = d3.select('body').append('div')
+      div = d3.select('body').append('div')
           .style('width', '100%')
           .style('height', '100%')
           .call(zoom.on('zoom', function() {
@@ -917,7 +985,7 @@
 
             var rect = node.node().getBoundingClientRect();
 
-            if(x + rect.width / 2 >= window.innerWidth)
+            if(x + rect.width / 2 >= windowWidth)
               x -= rect.width / 2;
             if(x - rect.width / 2 <= 0)
               x += rect.width / 2;
@@ -951,10 +1019,14 @@
           .attr('id', 'title')
           .text('Visualizer');
 
-      Object.keys(types.colors).forEach(function(type) {
+      Object.keys(types.colors).forEach(function(type, i) {
+        var text = type.toUpperCase();
+        var traceColors = Object.keys(types.traceColors);
+        if(traceColors.length > i)
+          text += ' <span style="opacity:0.2;">/</span> ' + traceColors[i].toUpperCase();
         legend.append('div')
             .attr('class', 'legend-item')
-            .html('<div class="color" style="float:left;background-color:' + types.colors[type] + ';"></div><div style="float:left;display:inline-block;">' + type.toUpperCase() + '</div>');
+            .html('<div class="color" style="float:left;background-color:' + types.colors[type] + ';"></div><div style="float:left;display:inline-block;">' + text + '</div>');
       });
 
       d3.select('body').append('div')
