@@ -455,6 +455,9 @@
             addTitleRow('from', d.source);
             addTitleRow('to', d.path);
 
+            if(d.amount > 1)
+              addRow('called ' + d.amount.toString() + ' times');
+
             var mouse = d3.mouse(document.body);
             tooltip.show(mouse[0], mouse[1], text);
           })
@@ -676,13 +679,19 @@
             blacklist: opt.blacklist || [],
             addChild: function(m, change, children) {
               // TODO: Get better support for this, once an API is implemented to get broker path
-              if(m.node.remotePath === '/conns/visualizer')
-                return;
+              //if(m.node.remotePath === '/conns/visualizer')
+              //  return;
 
               // code for trace requester
               // TODO: Only trace actual requesters
               m.links = [];
               var lastUpdate = Date.now();
+              var trace = {
+                list: {},
+                subscribe: {},
+                invoke: {}
+              };
+
               visualizer.requester.invoke(path + TRACE_REQUESTER, {
                 requester: m.node.remotePath.substring(path.length),
                 sessionId: null
@@ -692,28 +701,44 @@
                     return;
 
                   var r = invokeUpdate.rows;
+                  var shouldUpdate = false;
                   r.forEach(function(row) {
                     var added = row[4] === '+';
                     var rid = row[2];
 
                     if(added) {
-                      m.links.push({
-                        source: m.node.remotePath,
-                        path: path + row[0],
-                        type: row[1],
-                        rid: row[2],
-                        trace: true
-                      });
+                      var t = trace[row[1]][path + row[0]];
+                      if(t) {
+                        t.amount++;
+                      } else {
+                        m.links.push({
+                          source: m.node.remotePath,
+                          path: path + row[0],
+                          type: row[1],
+                          rid: row[2],
+                          amount: 1,
+                          trace: true
+                        });
+
+                        trace[row[1]][path + row[0]] = m.links[m.links.length - 1];
+                        shouldUpdate = true;
+                      }
                     } else {
                       // TODO: Not sure if this supports unsubscribe
                       [].concat(m.links).forEach(function(link) {
-                        if(link.path === row[0] && link.rid === rid && link.type === row[1])
-                          m.links.splice(m.links.indexOf(link), 1);
+                        if(link.path === row[0] && link.rid === rid && link.type === row[1]) {
+                          if(link.amount > 1) {
+                            link.amount--;
+                          } else {
+                            m.links.splice(m.links.indexOf(link), 1);
+                            shouldUpdate = true;
+                          }
+                        }
                       });
                     }
                   });
 
-                  if(r.length > 0 && Date.now() - lastUpdate < 1000 && svg) {
+                  if(shouldUpdate && Date.now() - lastUpdate < 1000 && svg) {
                     visualizer.update(m);
                   }
 
