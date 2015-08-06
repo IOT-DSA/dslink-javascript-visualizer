@@ -91,6 +91,8 @@
   };
 
   var div, dom, svg, tooltip, root, paths;
+  var reqs = [];
+  var subscriptions = {};
 
   var windowWidth = window.innerWidth;
   var windowHeight = window.innerHeight;
@@ -585,6 +587,8 @@
         promises.push(visualizer.list(child.node.remotePath, child, {
           deep: true
         }).then(function() {
+          return visualizer.subscribe(child.node.remotePath, child);
+        }).then(function() {
           visualizer.toggle(child);
         }));
       });
@@ -597,9 +601,8 @@
       opt = opt || {};
       var called = false;
       return new Promise(function(resolve, reject) {
-        console.log(path);
-
-        visualizer.requester.list(path).on('data', function(update) {
+        var req = visualizer.requester.list(path);
+        req.on('data', function(update) {
           if(!obj.node)
             obj.node = update.node;
           var children = update.node.children;
@@ -629,59 +632,7 @@
 
             (obj._children || obj.children || (obj.children = [])).push(map);
 
-            if(types.getType(map) === 'value' && !opt.deep) {
-              map.value = new util.EventEmitter();
-              map.value.value = null;
-              // for update selections
-              map.updateS = [];
-              var subCalled = false;
-              var lastTime = Date.now();
-
-              visualizer.requester.subscribe(map.node.remotePath, function(subUpdate) {
-                map.value.emit('value', subUpdate.value);
-                map.value.value = subUpdate.value;
-
-                if(subCalled) {
-                  if(Date.now() - lastTime <= 20 || document.hidden)
-                    return;
-                  lastTime = Date.now();
-
-                  var subNode = map.updateS.length > 0 ? (function() {
-                    var e = map.updateS.splice(0, 1)[0];
-                    clearTimeout(e.timer);
-                    return e.node;
-                  }()) : dom.selectAll('div.node').select(function(d) {
-                    if(d === map)
-                      return this;
-                    return null;
-                  }).append('div').attr('class', 'value');
-
-                  subNode.style('transform', util.matrix()())
-                    .style('opacity', 1)
-                    .transition()
-                    .duration(300)
-                    .style('transform', util.matrix().scale(12)())
-                    .style('opacity', 0);
-
-                  setTimeout(function() {
-                    window.requestAnimationFrame(function() {
-                      subNode.style('opacity', 0).style('transform', util.matrix()());
-                      var m = {
-                        node: subNode,
-                        timer: setTimeout(function() {
-                          map.updateS.splice(map.updateS.indexOf(m), 1);
-                          subNode.remove();
-                        }, 30000 / (map.updateS.length + 1))
-                      };
-
-                      map.updateS.push(m);
-                    });
-                  }, 300);
-                }
-
-                subCalled = true;
-              });
-            }
+            var path = map.node.remotePath;
 
             // so we can fill in params and columns within tooltips
             if(!opt.deep) {
@@ -697,12 +648,27 @@
             if(opt.blacklist && opt.blacklist.indexOf(change) > -1)
               return;
 
+            var path;
             [].concat(obj._children || obj.children).forEach(function(child, index) {
               if(child.realName === change) {
                 if(opt.removeChild)
                   opt.removeChild(child, change, children);
                 (obj._children || obj.children).splice(index, 1);
+                path = child.node.remotePath;
               }
+            });
+
+            if(subscriptions[path]) {
+              visualizer.requester.unsubscibe(path, subscriptions[path]);
+              delete subscriptions[path];
+            }
+
+            reqs = reqs.filter(function(req) {
+              if(req.path === path) {
+                req.stream.close();
+                return false;
+              }
+              return true;
             });
           };
 
@@ -727,6 +693,77 @@
             visualizer.update(obj);
           }
         });
+
+        return req;
+      }).then(function(stream) {
+        reqs.push({
+          path: path,
+          stream: stream
+        });
+      });
+    },
+    subscribe: function(path, map) {
+      if(types.getType(map) !== 'value')
+        return;
+
+      map.value = new util.EventEmitter();
+      map.value.value = null;
+
+      // for update selections
+      map.updateS = [];
+
+      var subCalled = false;
+      var lastTime = Date.now();
+
+      return new Promise(function(resolve, reject) {
+        subscriptions[path] = function(subUpdate) {
+          map.value.emit('value', subUpdate.value);
+          map.value.value = subUpdate.value;
+
+          if(subCalled) {
+            if(Date.now() - lastTime <= 20 || document.hidden)
+              return;
+            lastTime = Date.now();
+
+            var subNode = map.updateS.length > 0 ? (function() {
+              var e = map.updateS.splice(0, 1)[0];
+              clearTimeout(e.timer);
+              return e.node;
+            }()) : dom.selectAll('div.node').select(function(d) {
+              if(d.node === map.node) {
+                return this;
+              }
+              return null;
+            }).append('div').attr('class', 'value');
+
+            subNode.style('transform', util.matrix()())
+              .style('opacity', 1)
+              .transition()
+              .duration(300)
+              .style('transform', util.matrix().scale(12)())
+              .style('opacity', 0);
+
+            setTimeout(function() {
+              window.requestAnimationFrame(function() {
+                subNode.style('opacity', 0).style('transform', util.matrix()());
+                var m = {
+                  node: subNode,
+                  timer: setTimeout(function() {
+                    map.updateS.splice(map.updateS.indexOf(m), 1);
+                    subNode.remove();
+                  }, 30000 / (map.updateS.length + 1))
+                };
+
+                map.updateS.push(m);
+              });
+            }, 300);
+          }
+
+          subCalled = true;
+          resolve();
+        };
+
+        visualizer.requester.subscribe(path, subscriptions[path]);
       });
     },
     connect: function(url) {
@@ -777,10 +814,17 @@
                 invoke: {}
               };
 
-              visualizer.requester.invoke(path + TRACE_REQUESTER, {
+              var req = visualizer.requester.invoke(path + TRACE_REQUESTER, {
                 requester: m.node.remotePath.substring(path.length),
                 sessionId: null
-              }).on('data', function(invokeUpdate) {
+              });
+
+              reqs.push({
+                path: m.node.remotePath,
+                stream: req
+              });
+
+              req.on('data', function(invokeUpdate) {
                 try {
                   invokeUpdate.rows;
                 } catch(e) {
