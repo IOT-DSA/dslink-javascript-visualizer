@@ -248,7 +248,7 @@
             visualizer.svgHeight = height;
             visualizer.svgWidth = width;
 
-            svg.style('transform', util.matrix().translate(visualizer.translateY, visualizer.translateX));
+            // svg.style('transform', util.matrix().translate(visualizer.translateY, visualizer.translateX));
 
             link.attr('d', normalDiagonal);
           }
@@ -409,7 +409,6 @@
           .data(nodes.filter(function(node) {
             return node.links && node.links.length > 0;
           }).reduce(function(original, node) {
-            console.log(node);
             return original.concat(node.links);
           }, []), function(d) {
             return d.path + '/' + d.origin;
@@ -438,19 +437,40 @@
           .attr('class', 'trace')
           .attr('d', traceFunc)
           .attr('stroke', function(d) {
-            console.log(d.type);
-            return types.getColorFromTrace(d.type);
+            return types.getColorFromTrace(d);
+          })
+          .on('mouseover', function(d) {
+            var text = '';
+
+            var addRow = function(content, style) {
+              text += '<div class="legend-item" style="text-align:right;' + style + '">' + content + '</div>';
+            };
+
+            var addTitleRow = function(title, content, style) {
+              text += '<div class="legend-container" style="' + style + '"><div class="legend-item legend-title">' + title + '</div><div class="legend-item legend-content">' + content + '</div></div>';
+            };
+
+            addRow('<span style="color:' + types.getColorFromTrace(d) + '">' + d.type.toUpperCase() + '</span>', 'text-align:left;');
+
+            addTitleRow('from', d.source);
+            addTitleRow('to', d.path);
+
+            var mouse = d3.mouse(document.body);
+            tooltip.show(mouse[0], mouse[1], text);
+          })
+          .on('mouseout', function(d) {
+            tooltip.hide();
           });
 
       trace.transition()
           .duration(400)
           .attr('d', traceFunc);
 
-      // trace.exit().remove();
+      trace.exit().remove();
 
       var t = visualizer.translate(0, -root.x);
       if(heightAdjusted) {
-        svg.style('transform', t);
+        // svg.style('transform', t);
       }
     },
     _list: function(path, addChild, removeChild) {
@@ -662,37 +682,43 @@
               // code for trace requester
               // TODO: Only trace actual requesters
               m.links = [];
+              var lastUpdate = Date.now();
               visualizer.requester.invoke(path + TRACE_REQUESTER, {
-                requester: m.node.remotePath,
+                requester: m.node.remotePath.substring(path.length),
                 sessionId: null
               }).on('data', function(invokeUpdate) {
-                if(!invokeUpdate.updates)
-                  return;
+                try {
+                  if(!invokeUpdate.rows)
+                    return;
 
-                var r = invokeUpdate.updates;
-                r.forEach(function(row) {
-                  var added = row[4] === '+';
-                  var rid = row[2];
+                  var r = invokeUpdate.rows;
+                  r.forEach(function(row) {
+                    var added = row[4] === '+';
+                    var rid = row[2];
 
-                  if(added) {
-                    m.links.push({
-                      source: m.node.remotePath,
-                      path: row[0],
-                      type: row[1],
-                      rid: row[2],
-                      trace: true
-                    });
-                  } else {
-                    // TODO: Not sure if this supports unsubscribe
-                    [].concat(m.links).forEach(function(link) {
-                      if(link.path === row[0] && link.rid === rid && link.type === row[1])
-                        m.links.splice(m.links.indexOf(link), 1);
-                    });
+                    if(added) {
+                      m.links.push({
+                        source: m.node.remotePath,
+                        path: path + row[0],
+                        type: row[1],
+                        rid: row[2],
+                        trace: true
+                      });
+                    } else {
+                      // TODO: Not sure if this supports unsubscribe
+                      [].concat(m.links).forEach(function(link) {
+                        if(link.path === row[0] && link.rid === rid && link.type === row[1])
+                          m.links.splice(m.links.indexOf(link), 1);
+                      });
+                    }
+                  });
+
+                  if(r.length > 0 && Date.now() - lastUpdate < 1000 && svg) {
+                    visualizer.update(m);
                   }
-                });
 
-                if(svg)
-                  visualizer.update(m);
+                  lastUpdate = Date.now();
+                } catch(e) {}
               });
             },
             removeChild: function(m, change, children) {
@@ -849,8 +875,8 @@
           .append('div')
           .attr('class', 'graph');
 
-      svg = div.append('svg');
       dom = div.append('div');
+      svg = dom.append('svg');
 
       tooltip = (function() {
         var node = d3.select('body').append('div')
