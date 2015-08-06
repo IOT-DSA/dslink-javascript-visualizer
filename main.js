@@ -269,7 +269,7 @@
             visualizer.svgHeight = height;
             visualizer.svgWidth = width;
 
-            // svg.style('transform', util.matrix().translate(visualizer.translateY, visualizer.translateX));
+            svg.style('transform', util.matrix()());
 
             link.attr('d', normalDiagonal);
           }
@@ -543,8 +543,8 @@
       trace.exit().remove();
 
       var t = visualizer.translate(0, -root.x);
-      if(heightAdjusted) {
-        // svg.style('transform', t);
+      if(height < visualizer.svgHeight && width < visualizer.svgWidth) {
+        svg.style('transform', util.matrix().translate(0, xDiff)());
       }
     },
     _list: function(path, addChild, removeChild) {
@@ -629,7 +629,7 @@
 
             (obj._children || obj.children || (obj.children = [])).push(map);
 
-            if(types.getType(map) === 'value') {
+            if(types.getType(map) === 'value' && !opt.deep) {
               map.value = new util.EventEmitter();
               map.value.value = null;
               // for update selections
@@ -761,6 +761,7 @@
           };
 
           return visualizer.list(path + '/conns', map, {
+            deep: true,
             blacklist: opt.blacklist || [],
             addChild: function(m, change, children) {
               // TODO: Get better support for this, once an API is implemented to get broker path
@@ -840,6 +841,8 @@
             removeChild: function(m, change, children) {
 
             }
+          }).then(function() {
+            return visualizer.listChildren(map);
           }).then(function() {
             var promises = [];
             root.children.push(map);
