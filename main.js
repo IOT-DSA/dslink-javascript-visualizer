@@ -48,11 +48,13 @@
 
       return f;
     },
-    asyncFor: function(f, to, callback) {
+    asyncFor: function(to, callback) {
+      var f = 0;
       var chain = Promise.resolve();
       for(; f < to; f++) {
+        var i = f;
         chain.then(function() {
-          return callback(f);
+          return callback(i);
         });
       }
 
@@ -291,8 +293,8 @@
                 x: d.source.x0 + xDiff
               },
               target: {
-                y: d.target.y0 + yDiff,
-                x: d.target.x0 + xDiff
+                y: (d.target.y0 || d.target.y) + yDiff,
+                x: (d.target.x0 || d.target.x) + xDiff
               }
             });
           })
@@ -388,18 +390,22 @@
             e.style('transform', 'translate(' + d.y + 'px,' + d.x + 'px)');
           })
           .on('click', function(d) {
-            if(!d.queue.listed) {
-              visualizer.list(d.node.remotePath, d).then(function() {
-                visualizer.update(d);
+            var onClick = function() {
+              visualizer.toggle(d);
+              visualizer.update(d);
 
-                var pos = visualizer.getScreenPos(d);
-                if(pos.x <= 0 || pos.y <= 0 || pos.x >= innerWidth || pos.y >= innerHeight)
-                  visualizer.moveTo(d);
+              var pos = visualizer.getScreenPos(d);
+              if(pos.x <= 0 || pos.y <= 0 || pos.x >= innerWidth || pos.y >= innerHeight)
+                visualizer.moveTo(d);
+            };
+
+            if(!d.queue.listed) {
+              visualizer.listChildren(d).then(function() {
+                onClick();
               });
               return;
             }
-            visualizer.toggle(d);
-            visualizer.update(d);
+            onClick();
           });
 
       var textEnter = text.enter().append('div')
@@ -500,7 +506,8 @@
               if(path.lastIndexOf('/') === 0) {
                 break;
               }
-              parts.push(path.splice(path.lastIndexOf('/') + 1));
+              parts.push(path.slice(path.lastIndexOf('/') + 1));
+              path = path.slice(0, path.lastIndexOf('/'));
               node = paths[path];
             }
 
@@ -508,17 +515,19 @@
               return;
 
             if(node !== parts[d.path]) {
-              var i = 0;
+              parts = parts.reverse();
+
               var l = parts.length;
-              util.asyncFor(i, l, function(i) {
-                var p = node.node.remotePath + '/' + parts.slice(0, i + 1).join('/');
+              util.asyncFor(l, function(i) {
+                var p = node.node.remotePath + '/' + parts.slice(0, i).join('/');
+                if(p[p.length - 1] === '/')
+                  p = p.substring(0, p.length - 1);
+
                 if(paths[p] && paths[p]._children) {
                   visualizer.toggle(paths[p]);
                 } else {
                   if(i > 1)
-                    return visualizer.list(p, paths[node.node.remotePath + '/' + parts.slice(0, i).join('/')].find(function(e) {
-                      return e.realName === parts[i + 1];
-                    }));
+                    return visualizer.listChildren(paths[node.node.remotePath + '/' + parts.slice(0, i - 1).join('/')]);
                 }
               }).then(function() {
                 visualizer.update(node);
@@ -567,18 +576,36 @@
         });
       })
     },
+    listChildren: function(d) {
+      if(d.queue.listed)
+        return;
+
+      var promises = [];
+      (d._children || d.children || (d.children = [])).forEach(function(child) {
+        promises.push(visualizer.list(child.node.remotePath, child, {
+          deep: true
+        }).then(function() {
+          visualizer.toggle(child);
+        }));
+      });
+
+      return Promise.all(promises).then(function() {
+        d.queue.listed = true;
+      });
+    },
     list: function(path, obj, opt) {
       opt = opt || {};
-      obj.queue.listed = true;
       var called = false;
       return new Promise(function(resolve, reject) {
         console.log(path);
+
         visualizer.requester.list(path).on('data', function(update) {
           if(!obj.node)
             obj.node = update.node;
           var children = update.node.children;
           var keys = Object.keys(children);
 
+          var promises = [];
           var addChild = function(child) {
             if(opt.blacklist && opt.blacklist.indexOf(child) > -1)
               return;
@@ -657,10 +684,12 @@
             }
 
             // so we can fill in params and columns within tooltips
-            if(types.getType(map) === 'action') {
-              visualizer.list(map.node.remotePath, map).then(function() {
+            if(!opt.deep) {
+              promises.push(visualizer.list(map.node.remotePath, map, {
+                deep: true
+              }).then(function() {
                 visualizer.toggle(map);
-              });
+              }));
             }
           }
 
@@ -680,6 +709,11 @@
           if(!called) {
             keys.forEach(addChild);
             called = true;
+            Promise.all(promises).then(function() {
+              resolve();
+            }).catch(function(e) {
+              reject(e);
+            });
           } else {
             update.changes.forEach(function(change) {
               if(change.indexOf('@') === 0 || change.indexOf('$') === 0)
@@ -692,8 +726,6 @@
             });
             visualizer.update(obj);
           }
-
-          resolve();
         });
       });
     },
@@ -723,7 +755,6 @@
             name: mapName,
             realName: mapName,
             queue: {
-              broker: true
             },
             link: opt.link || null,
             children: []
@@ -749,7 +780,11 @@
                 requester: m.node.remotePath.substring(path.length),
                 sessionId: null
               }).on('data', function(invokeUpdate) {
-                console.log(invokeUpdate.rows);
+                try {
+                  invokeUpdate.rows;
+                } catch(e) {
+                  return;
+                }
 
                 var r = invokeUpdate.rows;
                 var shouldUpdate = false;
@@ -775,6 +810,8 @@
                       shouldUpdate = true;
                     }
                   } else {
+                    var shouldDeleteUpdate = false;
+
                     // TODO: Not sure if this supports unsubscribe
                     setTimeout(function() {
                       [].concat(m.links).forEach(function(link) {
@@ -784,16 +821,18 @@
                           } else {
                             m.links.splice(m.links.indexOf(link), 1);
                             delete trace[row[1]][path + row[0]];
+                            shouldDeleteUpdate = true;
                           }
                         }
                       });
 
-                      visualizer.update(m);
+                      if(m.queue.listed && shouldDeleteUpdate && svg)
+                        visualizer.update(m);
                     }, 400);
                   }
                 });
 
-                if(shouldUpdate && svg) {
+                if(m.queue.listed && shouldUpdate && svg) {
                   visualizer.update(m);
                 }
               });
@@ -871,8 +910,6 @@
       };
     },
     moveTo: function(d) {
-      var pos = visualizer.getScreenPos(d);
-      var translate = zoom.translate();
       var scale = zoom.scale();
 
       var x = (-d.y - visualizer.translateY) * scale + 400;
