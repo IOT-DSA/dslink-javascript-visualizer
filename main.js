@@ -60,6 +60,7 @@
 
       return chain;
     },
+    
     EventEmitter: function() {
       this.listeners = {};
     }
@@ -749,7 +750,7 @@
               clearTimeout(e.timer);
               return e.node;
             }()) : dom.selectAll('div.node').select(function(d) {
-              if(d.node === map.node) {
+              if(d.node.remotePath === map.node.remotePath) {
                 return this;
               }
               return null;
@@ -890,13 +891,13 @@
                         }
                       });
 
-                      if(m.queue.listed && shouldDeleteUpdate && svg)
+                      if(shouldDeleteUpdate && svg)
                         visualizer.update(m);
                     }, 400);
                   }
                 });
 
-                if(m.queue.listed && shouldUpdate && svg) {
+                if(shouldUpdate && svg) {
                   visualizer.update(m);
                 }
               });
