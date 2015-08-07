@@ -148,8 +148,8 @@
         width: 56px;
         z-index: 999;
         position: absolute;
-        bottom: 16px;
-        right: 16px;
+        top: 16px;
+        left: 16px;
         border-radius: 50%;
         background-color: white;
         box-shadow: 0 2px 2px 0 rgba(0, 0, 0, 0.14),
@@ -159,6 +159,46 @@
 
       #home:hover {
         cursor: pointer;
+      }
+
+      #sidebar {
+        position: absolute;
+        z-index: 999;
+        height: 100%;
+        overflow-y: auto;
+        width: 256px;
+        background-color: rgba(44, 62, 80, 0.9);
+        top: 0;
+        bottom: 0;
+        right: 0;
+        box-shadow: 0 2px 2px 0 rgba(0, 0, 0, 0.14),
+            0 3px 1px -2px rgba(0, 0, 0, 0.2),
+            0 1px 5px 0 rgba(0, 0, 0, 0.12);
+        will-change: transform;
+      }
+
+      #sidebar > #sidebar-hidden {
+        min-height: 100%;
+        width: 100%;
+      }
+
+      #sidebar > .sidebar-item {
+        position: absolute;
+        top: 0;
+        height: 48px;
+        width: 100%;
+        font-size: 16px;
+        line-height: 48px;
+        padding-left: 16px;
+        color: white;
+      }
+
+      #home,
+      #legend,
+      #sidebar,
+      .graph {
+        user-select: none;
+        -webkit-user-select: none;
       }
 
       .graph {
@@ -232,6 +272,24 @@
         left: 8px;
         font: 10px 'Roboto', sans-serif;
         height: 10px;
+      }
+
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      ::-webkit-scrollbar-track {
+        padding: 3px;
+        background-color: rgba(255, 255, 255, 0.1);
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background-color: rgba(255, 255, 255, 0.3);
+        border-radius: 3px;
+      }
+
+      ::-webkit-scrollbar-thumb:hover {
+        background-color: rgba(255, 255, 255, 0.5);
       }
     </style>
     <meta name="theme-color" content="#9b59b6">

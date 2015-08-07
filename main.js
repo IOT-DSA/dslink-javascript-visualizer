@@ -98,10 +98,17 @@
 
   var windowWidth = window.innerWidth;
   var windowHeight = window.innerHeight;
+  var sidebarRows = Math.ceil(windowHeight / 48);
 
   window.addEventListener('resize', function() {
     windowWidth = window.innerWidth;
     windowHeight = window.innerHeight;
+    if(sidebarRows !== Math.ceil(windowHeight / 48) && sidebar) {
+      sidebarRows = Math.ceil(windowHeight / 48);
+      sidebar.update();
+    } else {
+      sidebarRows = Math.ceil(windowHeight / 48);
+    }
   });
 
   // from Flat UI colors, with love
@@ -169,6 +176,109 @@
   })();
 
   var zoom = d3.behavior.zoom();
+
+  var sidebar = {
+    node: null,
+    data: [
+      'a',
+      'b',
+      'c',
+      'd',
+      'e',
+      'f',
+      'g',
+      'h',
+      'i',
+      'j',
+      'k',
+      'l',
+      'm',
+      'n',
+      'o',
+      'p',
+      'q',
+      'r',
+      's',
+      't',
+      'u',
+      'v',
+      'w',
+      'x',
+      'y',
+      'z',
+      'a',
+      'b',
+      'c',
+      'd',
+      'e',
+      'f',
+      'g',
+      'h',
+      'i',
+      'j',
+      'k',
+      'l',
+      'm',
+      'n',
+      'o',
+      'p',
+      'q',
+      'r',
+      's',
+      't',
+      'u',
+      'v',
+      'w',
+      'x',
+      'y',
+      'z'
+    ],
+    update: function() {
+      var data = [];
+      for(var i = 0; i < sidebarRows; i++) {
+        data.push(i);
+      }
+
+      sidebar.node.select('div#sidebar-hidden').style('height', (sidebar.data.length * 48) + 'px');
+
+      var items = sidebar.node.selectAll('div.sidebar-item')
+          .data(data, function(d) {
+            return d;
+          });
+
+       items.enter().insert('div', 'div#sidebar-item')
+          .attr('class', 'sidebar-item');
+
+      items.exit().remove();
+
+      sidebar.render();
+    },
+    render: function() {
+      window.requestAnimationFrame(function() {
+        // avoid overflow
+        var scrollTop = Math.max(0, Math.min(sidebar.data.length * 48, sidebar.node.node().scrollTop));
+        console.log(scrollTop);
+        var index = Math.floor(scrollTop / 48);
+        sidebar.node.selectAll('div.sidebar-item')
+          .style('transform', function(d) {
+            return util.matrix().translate(0, (index + d) * 48)();
+          })
+          .text(function(d) {
+            return sidebar.data[index + d];
+          });
+      });
+    },
+    done: function() {
+      sidebar.node = d3.select('body').append('div')
+          .attr('id', 'sidebar')
+          .on('scroll.sidebar', sidebar.render);
+
+      sidebar.node.append('div')
+          .attr('id', 'sidebar-hidden');
+
+      sidebar.update();
+    }
+  };
 
   var i = 0;
   var visualizer = {
@@ -547,7 +657,8 @@
                   if(np[np.length - 1] === '/')
                     np = np.substring(0, np.length - 1);
                   return visualizer.listChildren(paths[np]).then(function() {
-                    visualizer.toggle(paths[np]);
+                    if(paths[np]._children)
+                      visualizer.toggle(paths[np]);
                     visualizer.updatePaths();
                   });
                 }
@@ -600,7 +711,7 @@
     },
     listChildren: function(d) {
       if(d.queue.listed)
-        return;
+        return Promise.resolve();
 
       var promises = [];
       (d._children || d.children || (d.children = [])).forEach(function(child) {
@@ -1139,8 +1250,8 @@
           .on('mouseover', function(d) {
             tooltip.node.text('Go to /conns');
             tooltip.node.style('display', 'block');
-            tooltip.node.style('right', '88px');
-            tooltip.node.style('bottom', '28px');
+            tooltip.node.style('left', '88px');
+            tooltip.node.style('top', '28px');
             tooltip.node.style('text-align', 'center');
           })
           .on('mouseout', function(d) {
@@ -1158,6 +1269,8 @@
           .attr('src', 'images/home.svg')
           .attr('width', '24px')
           .attr('height', '24px');
+
+      sidebar.done();
 
       visualizer.update(root);
 
