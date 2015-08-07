@@ -50,11 +50,11 @@
     },
     asyncFor: function(to, callback) {
       var f = 0;
+      var i = 0;
       var chain = Promise.resolve();
       for(; f < to; f++) {
-        var i = f;
-        chain.then(function() {
-          return callback(i);
+        chain = chain.then(function() {
+          return callback(++i);
         });
       }
 
@@ -90,7 +90,8 @@
     }
   };
 
-  var div, dom, svg, tooltip, root, paths;
+  var div, dom, svg, tooltip, root;
+  var paths = {};
   var reqs = [];
   var subscriptions = {};
 
@@ -193,8 +194,23 @@
         d._children = null;
       }
     },
-    update: function(n) {
+    updatePaths: function() {
       paths = {};
+      var updatePath = function(n) {
+        if(!n.hidden)
+          paths[n.node.remotePath] = n;
+
+        if(n.children) {
+          n.children.forEach(function(child) {
+            updatePath(child);
+          });
+        }
+      };
+
+      updatePath(root);
+    },
+    update: function(n) {
+      visualizer.updatePaths();
 
       var depthSize = [1];
       var depth = function(obj, d) {
@@ -239,8 +255,6 @@
       });
 
       nodes.forEach(function(node) {
-        paths[node.node.remotePath] = node;
-
         if(!node.queue.broker || !node.link)
           return;
 
@@ -516,7 +530,7 @@
             if(node === void 0)
               return;
 
-            if(node !== parts[d.path]) {
+            if(node !== paths[d.path]) {
               parts = parts.reverse();
 
               var l = parts.length;
@@ -527,9 +541,14 @@
 
                 if(paths[p] && paths[p]._children) {
                   visualizer.toggle(paths[p]);
-                } else {
-                  if(i > 1)
-                    return visualizer.listChildren(paths[node.node.remotePath + '/' + parts.slice(0, i - 1).join('/')]);
+                } else if(!paths[p]) {
+                  var np = node.node.remotePath + '/' + parts.slice(0, i - 1).join('/');
+                  if(np[np.length - 1] === '/')
+                    np = np.substring(0, np.length - 1);
+                  return visualizer.listChildren(paths[np]).then(function() {
+                    visualizer.toggle(paths[np]);
+                    visualizer.updatePaths();
+                  });
                 }
               }).then(function() {
                 visualizer.update(node);
@@ -802,7 +821,7 @@
             blacklist: opt.blacklist || [],
             addChild: function(m, change, children) {
               // TODO: Get better support for this, once an API is implemented to get broker path
-              if(m.node.remotePath === '/conns/visualizer')
+              if(change.indexOf('visualizer') === 0)
                 return;
 
               // code for trace requester
@@ -941,6 +960,7 @@
               return Promise.all(promises);
             });
           }).then(function() {
+            map.queue.broker = true;
             return map;
           })
         };
