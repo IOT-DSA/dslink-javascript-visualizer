@@ -60,7 +60,7 @@
 
       return chain;
     },
-    
+
     EventEmitter: function() {
       this.listeners = {};
     }
@@ -980,8 +980,8 @@
     moveTo: function(d) {
       var scale = zoom.scale();
 
-      var x = (-d.y - visualizer.translateY) * scale + 400;
-      var y = (-d.x - visualizer.translateX) * scale + 400;
+      var x = (-d.y - visualizer.translateY) * scale + Math.min(400, windowWidth / 2);
+      var y = (-d.x - visualizer.translateX) * scale + Math.min(400, windowHeight / 2);
       zoom.translate([x, y]);
       div.transition()
           .duration(400)
@@ -1148,11 +1148,11 @@
             tooltip.hide();
           })
           .on('click', function() {
-            zoom.translate([400, 400]);
+            zoom.translate([Math.min(400, windowWidth / 2), Math.min(400, windowHeight / 2)]);
             zoom.scale(1);
             div.transition()
                 .duration(800)
-                .style('transform', util.matrix().translate(400, 400)());
+                .style('transform', util.matrix().translate(Math.min(400, windowWidth / 2),  Math.min(400, windowHeight / 2))());
           })
           .append('img')
           .attr('src', 'images/home.svg')
@@ -1161,7 +1161,7 @@
 
       visualizer.update(root);
 
-      zoom.translate([400, 400]);
+      zoom.translate([Math.min(400, windowWidth / 2), Math.min(400, windowHeight / 2)]);
       zoom.event(div);
     },
     main: function() {
