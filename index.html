@@ -167,7 +167,7 @@
         z-index: 999;
         height: 100%;
         overflow-y: auto;
-        overflow-x: auto;
+        overflow-x: hidden;
         width: 256px;
         background-color: rgba(44, 62, 80, 0.98);
         top: 0;
@@ -201,18 +201,35 @@
 
       .props .legend-container {
         height: 48px;
+        background-color: rgba(0,0,0,0.1);
       }
 
       .props .legend-content {
-        max-width: 200px;
+        width: 176px;
+        background-color: rgba(0,0,0,0.05);
+        border: 0;
+        color: white;
+        font-family: 'Roboto', sans-serif;
+        font-size: 16px;
+        overflow-y: hidden;
+        overflow-x: auto;
+        text-align: right;
+        -webkit-user-select: text;
+        -ms-user-select: text;
+        -moz-user-select: text;
+      }
+
+      .props .legend-content * {
+        cursor: text;
       }
 
       #home,
       #legend,
       .props,
       .graph {
-        user-select: none;
         -webkit-user-select: none;
+        -ms-user-select: none;
+        -moz-user-select: none;
       }
 
       .graph {
@@ -293,7 +310,7 @@
       }
 
       ::-webkit-scrollbar {
-        height: 8px;
+        height: 4px;
         width: 8px;
       }
 

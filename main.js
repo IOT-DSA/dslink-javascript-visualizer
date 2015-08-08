@@ -286,6 +286,8 @@
 
   var props = {
     recycler: null,
+    value: null,
+    valueListener: null,
     hidden: true,
     hide: function() {
       props.hidden = !props.hidden;
@@ -572,6 +574,12 @@
                     visualizer.update(d);
                   });
                 }, 400);
+              }
+
+              if(props.valueListener) {
+                props.value.remove('value', props.valueListener);
+                props.value = null;
+                props.valueListener = null;
               }
 
               props.recycler.data(visualizer.tooltipInfo(d));
@@ -1167,7 +1175,11 @@
       };
 
       var addTitleRow = function(title, content, style) {
-        rows.push('<div class="legend-container" style="' + style + '"><div class="legend-item legend-title">' + title + '</div><div class="legend-item legend-content">' + content + '</div></div>');
+        style = style || '';
+        if(!limited && style.indexOf('background-color') == -1 && rows.length > 0)
+          style += 'background-color:rgba(0,0,0,0.2);';
+        var contentBlock = '<div class="legend-item legend-content">' + content + '</div>';
+        rows.push('<div class="legend-container" style="' + style + '"><div class="legend-item legend-title">' + title + '</div>' + contentBlock + '</div>');
       };
 
       addTitleRow('<span style="color:' + types.getColor(d) + '">' + types.getType(d).toUpperCase() + '</span>', d.node.remotePath);
@@ -1176,7 +1188,7 @@
       if(types.getType(d) === 'node' && children > 0)
         addRow(children + ' children');
 
-      if(types.getType(d) === 'value' && !limited) {
+      if(types.getType(d) === 'value') {
         var type = d.node.configs['$type'];
         addTitleRow('type', type);
 
@@ -1195,9 +1207,16 @@
           if(value.trim().length == 0)
             value = '<span style="color:#f1c40f;">\' \'</span>';
           addTitleRow('value', value);
-          visualizer.tooltipValue = d.value.on('value', function(value) {
-            tooltip.node.select('#value').html((d.value.value == null ? '<span style="color:#f1c40f;">null</span>' : d.value.value.toString()));
+          var listener = d.value.on('value', function(value) {
+            (limited ? tooltip.node : props.recycler.node).select('#value').html((d.value.value == null ? '<span style="color:#f1c40f;">null</span>' : d.value.value.toString()));
           });
+
+          if(limited) {
+            visualizer.tooltipValue = listener;
+          } else {
+            props.value = d;
+            props.valueListener = listener;
+          }
         }
       }
 
@@ -1210,7 +1229,7 @@
           addRow('params', 'text-align:left;');
 
           params.forEach(function(param) {
-            addTitleRow(param.name, param.type, 'background-color: rgba(0,0,0,0.1);');
+            addTitleRow(param.name, param.type, 'background-color: rgba(0,0,0,0.3);');
           });
         }
 
@@ -1219,7 +1238,7 @@
           addRow('columns', 'text-align:left;');
 
           columns.forEach(function(column) {
-            addTitleRow(column.name, column.type, 'background-color: rgba(0,0,0,0.1);');
+            addTitleRow(column.name, column.type, 'background-color: rgba(0,0,0,0.3);');
           });
         }
       }
@@ -1251,6 +1270,12 @@
 
               if(!props.hidden)
                 props.hide();
+
+                if(props.valueListener) {
+                  props.value.remove('value', props.valueListener);
+                  props.value = null;
+                  props.valueListener = null;
+                }
             });
           });
 
