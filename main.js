@@ -286,12 +286,39 @@
 
   var props = {
     recycler: null,
+    hidden: true,
+    hide: function() {
+      props.hidden = !props.hidden;
+      if(props.hidden) {
+        props.recycler.node
+            .transition()
+            .duration(400)
+            .style('transform', util.matrix().translate(256, 0)());
+
+        home.transition()
+            .duration(400)
+            .style('transform', util.matrix().translate(-16, 0));
+            // width of sidebar, plus 16px padding
+            home.style('transform', util.matrix().translate(-272, 0)());
+      } else {
+        props.recycler.node
+            .transition()
+            .duration(400)
+            .style('transform', util.matrix()());
+
+        home.transition()
+            .duration(400)
+            .style('transform', util.matrix().translate(-272, 0));
+      }
+    },
     done: function() {
       props.recycler = new util.recycler({
         rowHeight: 32
       }).classAttr('props')
         .data(['a', 'b', 'c'])
         .update();
+
+      props.recycler.node.style('transform', util.matrix().translate(256, 0)());
 
       props.recycler.on('render', function(el, node) {
         el.text(node);
@@ -546,6 +573,12 @@
                   });
                 }, 400);
               }
+
+              props.recycler.data([d.node.remotePath]);
+              props.recycler.update();
+
+              if(props.hidden)
+                props.hide();
 
               visualizer.toggle(d);
               visualizer.update(d);
@@ -1209,7 +1242,20 @@
             zoom.scale(d3.event.scale);
           }))
           .append('div')
-          .attr('class', 'graph');
+          .attr('class', 'graph')
+          .on('click', function() {
+            var target = d3.event.target;
+            window.requestAnimationFrame(function() {
+              if(target !== document.body && target !== div.node() && target !== dom.node() && target !== svg.node())
+                return;
+
+              props.recycler.data([]);
+              props.recycler.update();
+
+              if(!props.hidden)
+                props.hide();
+            });
+          });
 
       dom = div.append('div');
       svg = dom.append('svg');
@@ -1277,7 +1323,7 @@
           .on('mouseover', function(d) {
             tooltip.node.text('Go to /conns');
             tooltip.node.style('display', 'block');
-            tooltip.node.style('right', '344px');
+            tooltip.node.style('right', props.hidden ? '88px' : '344px');
             tooltip.node.style('bottom', '24px');
             tooltip.node.style('text-align', 'center');
           })
@@ -1299,7 +1345,7 @@
           .attr('height', '24px');
 
       // width of sidebar, plus 16px padding
-      home.style('transform', util.matrix().translate(-272, 0)());
+      home.style('transform', util.matrix().translate(-16, 0));
 
       props.done();
 
