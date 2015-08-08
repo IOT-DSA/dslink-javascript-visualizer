@@ -312,16 +312,12 @@
       }
     },
     done: function() {
-      props.recycler = new util.recycler({
-        rowHeight: 32
-      }).classAttr('props')
-        .data(['a', 'b', 'c'])
-        .update();
+      props.recycler = new util.recycler().classAttr('props').update();
 
       props.recycler.node.style('transform', util.matrix().translate(256, 0)());
 
       props.recycler.on('render', function(el, node) {
-        el.text(node);
+        el.html(node);
       });
     }
   };
@@ -549,7 +545,11 @@
             return util.matrix().translate(n.y, heightAdjusted ? n.x : ((n.x0 || 0) + xDiff))();
           })
           .on('mouseover', function(d) {
-            visualizer.showTooltip(d);
+            var rows = visualizer.tooltipInfo(d, true);
+
+            var pos = visualizer.getScreenPos(d);
+            tooltip.show(pos.x, pos.y, rows.join(''));
+
             var e = d3.select(this);
             e.style('transform', (e.style('transform') || '') + 'scale(1.33)');
           })
@@ -574,7 +574,7 @@
                 }, 400);
               }
 
-              props.recycler.data([d.node.remotePath]);
+              props.recycler.data(visualizer.tooltipInfo(d));
               props.recycler.update();
 
               if(props.hidden)
@@ -1158,15 +1158,16 @@
           .duration(400)
           .style('transform', util.matrix().scale(scale).translate(x, y)());
     },
-    showTooltip: function(d) {
-      var text = '';
+    tooltipInfo: function(d, limited) {
+      limited = limited || false;
+      var rows = [];
 
       var addRow = function(content, style) {
-        text += '<div class="legend-item" style="text-align:right;' + style + '">' + content + '</div>';
+        rows.push('<div class="legend-item" style="text-align:right;' + style + '">' + content + '</div>');
       };
 
       var addTitleRow = function(title, content, style) {
-        text += '<div class="legend-container" style="' + style + '"><div class="legend-item legend-title">' + title + '</div><div class="legend-item legend-content">' + content + '</div></div>';
+        rows.push('<div class="legend-container" style="' + style + '"><div class="legend-item legend-title">' + title + '</div><div class="legend-item legend-content">' + content + '</div></div>');
       };
 
       addTitleRow('<span style="color:' + types.getColor(d) + '">' + types.getType(d).toUpperCase() + '</span>', d.node.remotePath);
@@ -1175,7 +1176,7 @@
       if(types.getType(d) === 'node' && children > 0)
         addRow(children + ' children');
 
-      if(types.getType(d) === 'value') {
+      if(types.getType(d) === 'value' && !limited) {
         var type = d.node.configs['$type'];
         addTitleRow('type', type);
 
@@ -1200,7 +1201,7 @@
         }
       }
 
-      if(types.getType(d) === 'action') {
+      if(types.getType(d) === 'action' && !limited) {
         var config = d.node.configs;
         var keys = Object.keys(config);
 
@@ -1227,8 +1228,7 @@
         addRow('disconnected', 'color: #bdc3c7;');
       }
 
-      var pos = visualizer.getScreenPos(d);
-      tooltip.show(pos.x, pos.y, text);
+      return rows;
     },
     done: function() {
       console.log('done');
@@ -1248,9 +1248,6 @@
             window.requestAnimationFrame(function() {
               if(target !== document.body && target !== div.node() && target !== dom.node() && target !== svg.node())
                 return;
-
-              props.recycler.data([]);
-              props.recycler.update();
 
               if(!props.hidden)
                 props.hide();
