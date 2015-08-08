@@ -60,9 +60,43 @@
 
       return chain;
     },
+    assign: function(dest) {
+      var count = 1;
+      var length = arguments.length;
 
+      for(; count < length; count++) {
+        var arg = arguments[count];
+
+        for(var prop in arg) {
+          if(arg.hasOwnProperty(prop)) {
+            dest[prop] = arg[prop];
+          }
+        }
+      }
+      return dest;
+    },
     EventEmitter: function() {
       this.listeners = {};
+    },
+    recycler: function(opt) {
+      util.EventEmitter.call(this);
+      opt = opt || {};
+
+      this.rowHeight = opt.rowHeight || 48;
+      this.parent = opt.parent || d3.select('body');
+
+      this.viewportHeight = opt.viewportHeight || window.innerHeight;
+      this.viewportRows = Math.ceil(this.viewportHeight / this.rowHeight);
+
+      this.node = this.parent.append('div')
+          .on('scroll.recycler', this.render);
+
+      this.node.append('div')
+          .attr('class', 'recycler-hidden');
+
+      this._data = [];
+
+      this.classes = [];
     }
   };
 
@@ -91,23 +125,96 @@
     }
   };
 
-  var div, dom, svg, tooltip, root;
+  util.recycler.prototype = util.assign(Object.create(util.EventEmitter.prototype), {
+    scrollTop: function() {
+      // avoid overflow
+      return Math.max(0, Math.min((this._data.length * this.rowHeight - this.viewportHeight - this.rowHeight), this.node.node().scrollTop));
+    },
+    data: function(obj) {
+      this._data = typeof obj === 'function' ? obj() : obj;
+      return this;
+    },
+    resize: function(height) {
+      this.viewportHeight = height;
+      this.viewportRows = Math.ceil(height / this.rowHeight);
+
+      this.update();
+      return this;
+    },
+    update: function() {
+      var data = [];
+      for(var i = 0; i < Math.min(this.viewportRows + 1, this._data.length); i++) {
+        data.push(i);
+      }
+
+      this.node.select('div.recycler-hidden').style('height', (this._data.length * this.rowHeight) + 'px');
+
+      var items = this.node.selectAll('div.recycler-item')
+          .data(data, function(d) {
+            return d;
+          });
+
+      items.enter().insert('div', 'div.recycler-hidden')
+          .attr('class', 'recycler-item')
+          .style('height', this.rowHeight + 'px')
+          .style('line-height', this.rowHeight + 'px')
+          .on('click', function(d) {
+            var scrollTop = this.scrollTop();
+            var index = Math.floor(scrollTop / this.rowHeight);
+
+            var node = this._data[index + d];
+            this.emit('click', node);
+          }.bind(this));
+
+      items.exit().remove();
+      this.render();
+      return this;
+    },
+    render: function() {
+      window.requestAnimationFrame(function() {
+        var scrollTop = this.scrollTop();
+        var index = Math.floor(scrollTop / this.rowHeight);
+
+        // hacky, for d3
+        var that = this;
+        this.node.selectAll('div.recycler-item')
+          .style('transform', function(d) {
+            return util.matrix().translate(0, (index + d) * this.rowHeight)();
+          }.bind(this))
+          .each(function(d) {
+            if(that._data[index + d] !== void 0) {
+              that.emit('render', d3.select(this), that._data[index + d]);
+            }
+          });
+      }.bind(this));
+    },
+    classAttr: function(name, add) {
+      add = add || true;
+      if(add) {
+        if(this.classes.indexOf(name) === -1)
+          this.classes.push(name);
+      } else {
+        if(this.classes.indexOf(name) > -1)
+          this.classes.splice(this.classes.indexOf(name), 1);
+      }
+      this.node.attr('class', this.classes.join(' '));
+      return this;
+    }
+  });
+
+  var div, dom, svg, tooltip, root, home;
   var paths = {};
   var reqs = [];
   var subscriptions = {};
 
   var windowWidth = window.innerWidth;
   var windowHeight = window.innerHeight;
-  var sidebarRows = Math.ceil(windowHeight / 48);
 
   window.addEventListener('resize', function() {
     windowWidth = window.innerWidth;
     windowHeight = window.innerHeight;
-    if(sidebarRows !== Math.ceil(windowHeight / 48) && sidebar) {
-      sidebarRows = Math.ceil(windowHeight / 48);
-      sidebar.update();
-    } else {
-      sidebarRows = Math.ceil(windowHeight / 48);
+    if(props.recycler && props.recycler.viewportRows !== Math.ceil(windowHeight / props.recycler.rowHeight)) {
+      props.recycler.resize(windowHeight);
     }
   });
 
@@ -177,116 +284,18 @@
 
   var zoom = d3.behavior.zoom();
 
-  var sidebar = {
-    node: null,
-    lastClicked: null,
-    data: [],
-    toggle: function(node) {
-      node.sidebar.hideChildren = !node.sidebar.hideChildren;
-    },
-    updateData: function() {
-      sidebar.data = [];
-      var updatePath = function(n, p) {
-        if(n && !n.hidden) {
-          if(!n.depth && p)
-            n.depth = p.depth + 1;
-          sidebar.data.push(n);
-
-          if(n.sidebar.hideChildren)
-            return;
-        }
-
-        if(n.children) {
-          n.children.forEach(function(child) {
-            updatePath(child, n);
-          });
-        }
-
-        if(n._children) {
-          n._children.forEach(function(child) {
-            updatePath(child, n);
-          });
-        }
-      };
-
-      updatePath(root);
-    },
-    update: function() {
-      var data = [];
-      for(var i = 0; i < Math.min(sidebarRows + 1, sidebar.data.length); i++) {
-        data.push(i);
-      }
-
-      sidebar.node.select('div#sidebar-hidden').style('height', (sidebar.data.length * 48) + 'px');
-
-      var items = sidebar.node.selectAll('div.sidebar-item')
-          .data(data, function(d) {
-            return d;
-          });
-
-      items.enter().insert('div', 'div#sidebar-item')
-          .attr('class', 'sidebar-item')
-          .on('click', function(d) {
-            var scrollTop = Math.max(0, Math.min((sidebar.data.length * 48 - windowHeight - 48), sidebar.node.node().scrollTop));
-            var index = Math.floor(scrollTop / 48);
-
-            var node = sidebar.data[index + d];
-            sidebar.lastClicked = node;
-            sidebar.toggle(node);
-            visualizer.listChildren(node).then(function() {
-              sidebar.updateData();
-              sidebar.update();
-            });
-          });
-
-      items.exit().remove();
-      sidebar.render();
-    },
-    render: function() {
-      window.requestAnimationFrame(function() {
-        // avoid overflow
-        var scrollTop = Math.max(0, Math.min((sidebar.data.length * 48 - windowHeight - 48), sidebar.node.node().scrollTop));
-        var index = Math.floor(scrollTop / 48);
-
-        sidebar.node.selectAll('div.sidebar-item')
-          .style('transform', function(d) {
-            return util.matrix().translate(0, (index + d) * 48)();
-          })
-          .select(function(d) {
-            if(sidebar.data[index + d] !== void 0)
-              return this;
-            return null;
-          })
-          .style('padding-left', function(d) {
-            var node = sidebar.data[index + d];
-            return (node.depth * 4) + 'px';
-          })
-          .style('background-color', function(d) {
-            var node = sidebar.data[index + d];
-            if(node !== sidebar.data[0] && node === sidebar.lastClicked)
-              return 'rgba(155,89,182,0.06)';
-            return 'rgba(0,0,0,' + (0.1 * sidebar.data[index + d].depth) + ')';
-          })
-          .html(function(d) {
-            var node = sidebar.data[index + d];
-            var data = '<div class="color" style="background-color:' + types.getColor(node) + ';"></div><div style="float:left;">' + sidebar.data[index + d].name + '</div>';
-
-            if((node._children && node._children.length > 0) || (node.children && node.children.length > 0))
-              data += '<img class="expand' + (node.sidebar.hideChildren ? '' : ' flip') + '" src="images/expand.svg"></img>';
-
-            return data;
-          });
-      });
-    },
+  var props = {
+    recycler: null,
     done: function() {
-      sidebar.node = d3.select('body').append('div')
-          .attr('id', 'sidebar')
-          .on('scroll.sidebar', sidebar.render);
+      props.recycler = new util.recycler({
+        rowHeight: 32
+      }).classAttr('props')
+        .data(['a', 'b', 'c'])
+        .update();
 
-      sidebar.node.append('div')
-          .attr('id', 'sidebar-hidden');
-
-      sidebar.update();
+      props.recycler.on('render', function(el, node) {
+        el.text(node);
+      });
     }
   };
 
@@ -330,10 +339,6 @@
       };
 
       updatePath(root);
-
-      sidebar.updateData();
-      sidebar.update();
-      sidebar.render();
     },
     update: function(n) {
       var depthSize = [1];
@@ -777,9 +782,6 @@
               node: node,
               visualizer: {
                 listed: false
-              },
-              sidebar: {
-                hideChildren: true
               }
             };
 
@@ -949,11 +951,7 @@
           var map = {
             name: mapName,
             realName: mapName,
-            visualizer: {
-            },
-            sidebar: {
-              hideChildren: true
-            },
+            visualizer: {},
             link: opt.link || null,
             children: []
           };
@@ -1274,13 +1272,13 @@
             .html('<div class="color" style="float:left;background-color:' + types.colors[type] + ';"></div><div style="float:left;display:inline-block;">' + text + '</div>');
       });
 
-      d3.select('body').append('div')
+      home = d3.select('body').append('div')
           .attr('id', 'home')
           .on('mouseover', function(d) {
             tooltip.node.text('Go to /conns');
             tooltip.node.style('display', 'block');
-            tooltip.node.style('left', '88px');
-            tooltip.node.style('top', '28px');
+            tooltip.node.style('right', '344px');
+            tooltip.node.style('bottom', '24px');
             tooltip.node.style('text-align', 'center');
           })
           .on('mouseout', function(d) {
@@ -1293,13 +1291,17 @@
             div.transition()
                 .duration(800)
                 .style('transform', util.matrix().translate(Math.min(400, windowWidth / 2),  Math.min(400, windowHeight / 2))());
-          })
-          .append('img')
+          });
+
+      home.append('img')
           .attr('src', 'images/home.svg')
           .attr('width', '24px')
           .attr('height', '24px');
 
-      sidebar.done();
+      // width of sidebar, plus 16px padding
+      home.style('transform', util.matrix().translate(-272, 0)());
+
+      props.done();
 
       visualizer.update(root);
 
