@@ -141,7 +141,7 @@
       return types.colors[types.getType(d)];
     },
     getType: function(d) {
-      if(d.queue.broker)
+      if(d.visualizer.broker)
         return 'broker';
       if(d.node.configs['$type'])
         return 'value';
@@ -179,6 +179,7 @@
 
   var sidebar = {
     node: null,
+    lastClicked: null,
     data: [],
     toggle: function(node) {
       node.sidebar.hideChildren = !node.sidebar.hideChildren;
@@ -230,6 +231,7 @@
             var index = Math.floor(scrollTop / 48);
 
             var node = sidebar.data[index + d];
+            sidebar.lastClicked = node;
             sidebar.toggle(node);
             visualizer.listChildren(node).then(function() {
               sidebar.updateData();
@@ -260,6 +262,9 @@
             return (node.depth * 4) + 'px';
           })
           .style('background-color', function(d) {
+            var node = sidebar.data[index + d];
+            if(node !== sidebar.data[0] && node === sidebar.lastClicked)
+              return 'rgba(155,89,182,0.06)';
             return 'rgba(0,0,0,' + (0.1 * sidebar.data[index + d].depth) + ')';
           })
           .html(function(d) {
@@ -376,7 +381,7 @@
       });
 
       nodes.forEach(function(node) {
-        if(!node.queue.broker || !node.link)
+        if(!node.visualizer.broker || !node.link)
           return;
 
         links.push({
@@ -479,7 +484,7 @@
       var node = dom.selectAll('div.node')
           .data(nodes, function(d) { return d.node.remotePath; })
           .style('background-color', function(d) {
-            if(((!d.children && !d._children) || (d.children && !d._children)) && d.queue.listed && types.getType(d) !== 'action')
+            if(((!d.children && !d._children) || (d.children && !d._children)) && d.visualizer.listed && types.getType(d) !== 'action')
               return 'white';
             return types.getColor(d);
           });
@@ -499,7 +504,7 @@
           .attr('class', 'node')
           .style('opacity', 0)
           .style('background-color', function(d) {
-            if(!d.queue.listed)
+            if(!d.visualizer.listed)
               return types.getColor(d);
             if(((!d.children && !d._children) || (d.children && !d._children)) && types.getType(d) !== 'action')
               return 'white';
@@ -528,6 +533,15 @@
           })
           .on('click', function(d) {
             var onClick = function() {
+              if(!d.visualizer.listed) {
+                var promise = visualizer.listChildren(d);
+                setTimeout(function() {
+                  promise.then(function() {
+                    visualizer.update(d);
+                  });
+                }, 400);
+              }
+
               visualizer.toggle(d);
               visualizer.update(d);
 
@@ -536,13 +550,11 @@
                 visualizer.moveTo(d);
             };
 
-            if(!d.queue.listed) {
-              visualizer.listChildren(d).then(function() {
-                onClick();
-              });
-              return;
+            if(d.visualizer.promise) {
+              d.visualizer.promise.then(onClick);
+            } else {
+              onClick();
             }
-            onClick();
           });
 
       var textEnter = text.enter().append('div')
@@ -720,19 +732,20 @@
       })
     },
     listChildren: function(d) {
-      if(d.queue.listed)
+      if(d.visualizer.listed)
         return Promise.resolve();
-      d.queue.listed = true;
+      d.visualizer.listed = true;
 
       var promises = [];
       (d._children || d.children || (d.children = [])).forEach(function(child) {
-        promises.push(visualizer.list(child.node.remotePath, child, {
-          deep: true
-        }).then(function() {
+        var promise = visualizer.list(child.node.remotePath, child).then(function() {
           return visualizer.subscribe(child.node.remotePath, child);
         }).then(function() {
           visualizer.toggle(child);
-        }));
+        });
+
+        child.visualizer.promise = promise;
+        promises.push(promise);
       });
 
       return Promise.all(promises);
@@ -762,7 +775,7 @@
               realName: child,
               children: [],
               node: node,
-              queue: {
+              visualizer: {
                 listed: false
               },
               sidebar: {
@@ -776,10 +789,8 @@
             (obj._children || obj.children || (obj.children = [])).push(map);
 
             var path = map.node.remotePath;
-            if(!opt.deep || obj.queue.listed) {
-              promises.push(visualizer.list(map.node.remotePath, map, {
-                deep: true
-              }).then(function() {
+            if(obj.visualizer.listed) {
+              promises.push(visualizer.list(map.node.remotePath, map).then(function() {
                 visualizer.toggle(map);
               }));
             }
@@ -923,7 +934,7 @@
         return link.onRequesterReady;
       }).then(function(requester) {
         root = {
-          queue: {
+          visualizer: {
             depth: 1
           },
           children: [],
@@ -938,7 +949,7 @@
           var map = {
             name: mapName,
             realName: mapName,
-            queue: {
+            visualizer: {
             },
             sidebar: {
               hideChildren: true
@@ -948,7 +959,6 @@
           };
 
           return visualizer.list(path + '/conns', map, {
-            deep: true,
             blacklist: opt.blacklist || [],
             addChild: function(m, change, children) {
               // TODO: Get better support for this, once an API is implemented to get broker path
@@ -1044,9 +1054,9 @@
             var addChild = function(child, children, initial) {
               initial = initial || true;
               if(initial) {
-                if(root.queue.depth < (depth + 1)) {
+                if(root.visualizer.depth < (depth + 1)) {
                   root = {
-                    queue: {
+                    visualizer: {
                       depth: depth + 1
                     },
                     children: [root],
@@ -1054,9 +1064,9 @@
                   };
                 }
 
-                root = root.queue.depth == (depth + 1) ? root : (function() {
+                root = root.visualizer.depth == (depth + 1) ? root : (function() {
                   var r = root;
-                  var i = root.queue.depth;
+                  var i = root.visualizer.depth;
                   for(; i < depth; i++) {
                     r = r.children[0];
                   }
@@ -1091,7 +1101,7 @@
               return Promise.all(promises);
             });
           }).then(function() {
-            map.queue.broker = true;
+            map.visualizer.broker = true;
             return map;
           })
         };
