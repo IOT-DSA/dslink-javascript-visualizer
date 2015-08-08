@@ -195,12 +195,18 @@
 
       .props .legend-item {
         padding: 0px 16px;
-        height: 48px;
-        line-height: 48px;
+        padding-top: 4px;
+        height: 100%;
+        line-height: 40px;
+      }
+
+      .props .legend-title {
+        overflow-x: hidden;
+        width: 80px;
       }
 
       .props .legend-container {
-        height: 48px;
+        height: 100%;
         background-color: rgba(0,0,0,0.1);
       }
 
@@ -343,6 +349,7 @@
       <div id="connect-btn" style="margin-left: 16px;">Connect</div>
     </div>
     <!-- d3 version 3.5.6 -->
+    <script type="text/javascript" src="dist/regex-weburl.js"></script>
     <script type="text/javascript" src="dist/d3.min.js"></script>
     <!-- Latest DSA JS SDK, use update.sh to update to latest -->
     <script type="text/javascript" src="dist/dslink.min.js"></script>

@@ -75,6 +75,26 @@
       }
       return dest;
     },
+    humanize: function(date) {
+      var stats = {
+        month: (date.getMonth() + 1).toString(),
+        date: date.getDate().toString(),
+        year: date.getFullYear().toString(),
+        hours: (date.getHours() + 1).toString(),
+        minutes: (date.getMinutes() + 1).toString(),
+        seconds: (date.getSeconds() + 1).toString()
+      };
+
+      var month = stats.month.length === 1 ? '0' + stats.month : stats.month;
+      var date = stats.date.length === 1 ? '0' + stats.date : stats.date;
+      var year = stats.year;
+
+      var hours = stats.hours.length === 1 ? '0' + stats.hours : stats.hours;
+      var minutes = stats.minutes.length === 1 ? '0' + stats.minutes : stats.minutes;
+      var seconds = stats.seconds.length === 1 ? '0' + stats.seconds : stats.seconds;
+
+      return month + '/' + date + '/' + year + ' at ' + hours + ':' + minutes + ':' + seconds;
+    },
     EventEmitter: function() {
       this.listeners = {};
     },
@@ -577,7 +597,7 @@
               }
 
               if(props.valueListener) {
-                props.value.remove('value', props.valueListener);
+                props.value.value.remove('value', props.valueListener);
                 props.value = null;
                 props.valueListener = null;
               }
@@ -908,6 +928,7 @@
         return;
 
       map.value = new util.EventEmitter();
+      map.value.ts = null;
       map.value.value = null;
 
       // for update selections
@@ -919,6 +940,7 @@
       return new Promise(function(resolve, reject) {
         subscriptions[path] = function(subUpdate) {
           map.value.emit('value', subUpdate.value);
+          map.value.ts = util.humanize(new Date(subUpdate.ts));
           map.value.value = subUpdate.value;
 
           if(subCalled) {
@@ -1203,13 +1225,25 @@
             addTitleRow(key, value, 'background-color: rgba(0,0,0,0.1);');
           });
         } else {
-          var value = (d.value.value == null ? '<span id="value"><span style="color:#f1c40f;">null</span></span>' : '<span id="value">' + d.value.value.toString() + '</span>');
-          if(value.trim().length == 0)
-            value = '<span style="color:#f1c40f;">\' \'</span>';
+          var value = d.value.value == null ? '<span id="value"><span style="color:#f1c40f;">null</span></span>' :
+              (d.value.value.toString().search(re_weburl) > -1 ?
+                  '<span id="value"><a src="">URL</a></span>' :
+                  '<span id="value">' + d.value.value.toString() + '</span>');
           addTitleRow('value', value);
           var listener = d.value.on('value', function(value) {
-            (limited ? tooltip.node : props.recycler.node).select('#value').html((d.value.value == null ? '<span style="color:#f1c40f;">null</span>' : d.value.value.toString()));
+            var value = d.value.value == null ? '<span style="color:#f1c40f;">null</span>' :
+                (d.value.value.toString().search(re_weburl) > -1 ?
+                    '<a src="">URL</a>' :
+                    d.value.value.toString());
+            if(value.trim().length == 0)
+              value = '<span style="color:#f1c40f;">\' \'</span>';
+
+            var node = (limited ? tooltip.node : props.recycler.node);
+            node.select('#value').html(value);
+            node.select('#ts').text(d.value.ts);
           });
+
+          addTitleRow('stamp', '<span id="ts">' + d.value.ts + '</span>', 'color:' + COLOR_VALUE + ';');
 
           if(limited) {
             visualizer.tooltipValue = listener;
@@ -1245,6 +1279,7 @@
 
       if(d.node.configs['$disconnectedTs']) {
         addRow('disconnected', 'color: #bdc3c7;');
+        addRow(util.humanize(new Date(d.node.configs['$disconnectedTs'])), 'color: #bdc3c7;');
       }
 
       return rows;
@@ -1272,7 +1307,7 @@
                 props.hide();
 
                 if(props.valueListener) {
-                  props.value.remove('value', props.valueListener);
+                  props.value.value.remove('value', props.valueListener);
                   props.value = null;
                   props.valueListener = null;
                 }
