@@ -114,15 +114,15 @@
         white-space: nowrap;
       }
 
-      .legend-item > .color {
+      .color {
         display: inline-block;
         height: 8px;
         width: 8px;
         border-radius: 4px;
-        margin-left: 12px;
-        margin-right: 12px;
-        margin-top: 12px;
-        margin-bottom: 12px;
+      }
+
+      .legend-item > .color {
+        margin: 12px;
       }
 
       .legend-container {
@@ -166,8 +166,9 @@
         z-index: 999;
         height: 100%;
         overflow-y: auto;
+        overflow-x: auto;
         width: 256px;
-        background-color: rgba(44, 62, 80, 0.9);
+        background-color: rgba(44, 62, 80, 0.98);
         top: 0;
         bottom: 0;
         right: 0;
@@ -186,11 +187,24 @@
         position: absolute;
         top: 0;
         height: 48px;
-        width: 100%;
+        white-space: nowrap;
+        min-width: 100%;
         font-size: 16px;
         line-height: 48px;
-        padding-left: 16px;
         color: white;
+      }
+
+      .sidebar-item > .color {
+        margin: 20px;
+        float: left;
+      }
+
+      .sidebar-item > .expand {
+        display: inline-block;
+        float: right;
+        height: 24px;
+        width: 24px;
+        margin: 12px;
       }
 
       #home,
@@ -274,11 +288,17 @@
         height: 10px;
       }
 
+      .flip {
+        transform: rotate(180deg);
+      }
+
       ::-webkit-scrollbar {
+        height: 8px;
         width: 8px;
       }
 
       ::-webkit-scrollbar-track {
+        border-radius: 3px;
         padding: 3px;
         background-color: rgba(255, 255, 255, 0.1);
       }
@@ -290,6 +310,10 @@
 
       ::-webkit-scrollbar-thumb:hover {
         background-color: rgba(255, 255, 255, 0.5);
+      }
+
+      ::-webkit-scrollbar-corner {
+        background-color: transparent;
       }
     </style>
     <meta name="theme-color" content="#9b59b6">

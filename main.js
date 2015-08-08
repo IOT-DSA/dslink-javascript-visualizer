@@ -179,63 +179,40 @@
 
   var sidebar = {
     node: null,
-    data: [
-      'a',
-      'b',
-      'c',
-      'd',
-      'e',
-      'f',
-      'g',
-      'h',
-      'i',
-      'j',
-      'k',
-      'l',
-      'm',
-      'n',
-      'o',
-      'p',
-      'q',
-      'r',
-      's',
-      't',
-      'u',
-      'v',
-      'w',
-      'x',
-      'y',
-      'z',
-      'a',
-      'b',
-      'c',
-      'd',
-      'e',
-      'f',
-      'g',
-      'h',
-      'i',
-      'j',
-      'k',
-      'l',
-      'm',
-      'n',
-      'o',
-      'p',
-      'q',
-      'r',
-      's',
-      't',
-      'u',
-      'v',
-      'w',
-      'x',
-      'y',
-      'z'
-    ],
+    data: [],
+    toggle: function(node) {
+      node.sidebar.hideChildren = !node.sidebar.hideChildren;
+    },
+    updateData: function() {
+      sidebar.data = [];
+      var updatePath = function(n, p) {
+        if(n && !n.hidden) {
+          if(!n.depth && p)
+            n.depth = p.depth + 1;
+          sidebar.data.push(n);
+
+          if(n.sidebar.hideChildren)
+            return;
+        }
+
+        if(n.children) {
+          n.children.forEach(function(child) {
+            updatePath(child, n);
+          });
+        }
+
+        if(n._children) {
+          n._children.forEach(function(child) {
+            updatePath(child, n);
+          });
+        }
+      };
+
+      updatePath(root);
+    },
     update: function() {
       var data = [];
-      for(var i = 0; i < sidebarRows; i++) {
+      for(var i = 0; i < Math.min(sidebarRows + 1, sidebar.data.length); i++) {
         data.push(i);
       }
 
@@ -246,25 +223,53 @@
             return d;
           });
 
-       items.enter().insert('div', 'div#sidebar-item')
-          .attr('class', 'sidebar-item');
+      items.enter().insert('div', 'div#sidebar-item')
+          .attr('class', 'sidebar-item')
+          .on('click', function(d) {
+            var scrollTop = Math.max(0, Math.min((sidebar.data.length * 48 - windowHeight - 48), sidebar.node.node().scrollTop));
+            var index = Math.floor(scrollTop / 48);
+
+            var node = sidebar.data[index + d];
+            sidebar.toggle(node);
+            visualizer.listChildren(node).then(function() {
+              sidebar.updateData();
+              sidebar.update();
+            });
+          });
 
       items.exit().remove();
-
       sidebar.render();
     },
     render: function() {
       window.requestAnimationFrame(function() {
         // avoid overflow
-        var scrollTop = Math.max(0, Math.min(sidebar.data.length * 48, sidebar.node.node().scrollTop));
-        console.log(scrollTop);
+        var scrollTop = Math.max(0, Math.min((sidebar.data.length * 48 - windowHeight - 48), sidebar.node.node().scrollTop));
         var index = Math.floor(scrollTop / 48);
+
         sidebar.node.selectAll('div.sidebar-item')
           .style('transform', function(d) {
             return util.matrix().translate(0, (index + d) * 48)();
           })
-          .text(function(d) {
-            return sidebar.data[index + d];
+          .select(function(d) {
+            if(sidebar.data[index + d] !== void 0)
+              return this;
+            return null;
+          })
+          .style('padding-left', function(d) {
+            var node = sidebar.data[index + d];
+            return (node.depth * 4) + 'px';
+          })
+          .style('background-color', function(d) {
+            return 'rgba(0,0,0,' + (0.1 * sidebar.data[index + d].depth) + ')';
+          })
+          .html(function(d) {
+            var node = sidebar.data[index + d];
+            var data = '<div class="color" style="background-color:' + types.getColor(node) + ';"></div><div style="float:left;">' + sidebar.data[index + d].name + '</div>';
+
+            if((node._children && node._children.length > 0) || (node.children && node.children.length > 0))
+              data += '<img class="expand' + (node.sidebar.hideChildren ? '' : ' flip') + '" src="images/expand.svg"></img>';
+
+            return data;
           });
       });
     },
@@ -308,8 +313,9 @@
     updatePaths: function() {
       paths = {};
       var updatePath = function(n) {
-        if(!n.hidden)
+        if(!n.hidden) {
           paths[n.node.remotePath] = n;
+        }
 
         if(n.children) {
           n.children.forEach(function(child) {
@@ -319,10 +325,12 @@
       };
 
       updatePath(root);
+
+      sidebar.updateData();
+      sidebar.update();
+      sidebar.render();
     },
     update: function(n) {
-      visualizer.updatePaths();
-
       var depthSize = [1];
       var depth = function(obj, d) {
         if(obj.children && obj.children.length > 0) {
@@ -350,6 +358,8 @@
       nodes.forEach(function(node) {
         node.y = Math.max(300 * (node.depth - 1), 0);
       });
+
+      visualizer.updatePaths();
 
       var yDiff = root.y - (oldY || root.y);
       var xDiff = root.x - (oldX || root.x);
@@ -712,6 +722,7 @@
     listChildren: function(d) {
       if(d.queue.listed)
         return Promise.resolve();
+      d.queue.listed = true;
 
       var promises = [];
       (d._children || d.children || (d.children = [])).forEach(function(child) {
@@ -724,9 +735,7 @@
         }));
       });
 
-      return Promise.all(promises).then(function() {
-        d.queue.listed = true;
-      });
+      return Promise.all(promises);
     },
     list: function(path, obj, opt) {
       opt = opt || {};
@@ -755,6 +764,9 @@
               node: node,
               queue: {
                 listed: false
+              },
+              sidebar: {
+                hideChildren: true
               }
             };
 
@@ -764,9 +776,7 @@
             (obj._children || obj.children || (obj.children = [])).push(map);
 
             var path = map.node.remotePath;
-
-            // so we can fill in params and columns within tooltips
-            if(!opt.deep) {
+            if(!opt.deep || obj.queue.listed) {
               promises.push(visualizer.list(map.node.remotePath, map, {
                 deep: true
               }).then(function() {
@@ -790,7 +800,7 @@
             });
 
             if(subscriptions[path]) {
-              visualizer.requester.unsubscibe(path, subscriptions[path]);
+              visualizer.requester.unsubscribe(path, subscriptions[path]);
               delete subscriptions[path];
             }
 
@@ -807,25 +817,31 @@
             keys.forEach(addChild);
             called = true;
             Promise.all(promises).then(function() {
-              resolve();
+              resolve(req);
             }).catch(function(e) {
               reject(e);
             });
           } else {
+            var shouldUpdate = false;
             update.changes.forEach(function(change) {
               if(change.indexOf('@') === 0 || change.indexOf('$') === 0)
                 return;
-              if(keys.indexOf(change) > 0) {
-                addChild(change);
+              if(keys.indexOf(change) > -1) {
+                var children = obj._children || obj.children;
+                if(!children || !children.some(function(child) {
+                  return child.realName === change;
+                })) {
+                  shouldUpdate = true;
+                  addChild(change);
+                }
               } else {
+                shouldUpdate = true;
                 removeChild(change);
               }
             });
             visualizer.update(obj);
           }
         });
-
-        return req;
       }).then(function(stream) {
         reqs.push({
           path: path,
@@ -923,6 +939,9 @@
             name: mapName,
             realName: mapName,
             queue: {
+            },
+            sidebar: {
+              hideChildren: true
             },
             link: opt.link || null,
             children: []
@@ -1144,7 +1163,7 @@
         var config = d.node.configs;
         var keys = Object.keys(config);
 
-        if(keys.indexOf('$params') > 0) {
+        if(keys.indexOf('$params') > 0 && Array.isArray(config['$params'])) {
           var params = config['$params'];
           addRow('params', 'text-align:left;');
 
@@ -1153,7 +1172,7 @@
           });
         }
 
-        if(keys.indexOf('$columns') > 0) {
+        if(keys.indexOf('$columns') > 0 && Array.isArray(config['$columns'])) {
           var columns = config['$columns'];
           addRow('columns', 'text-align:left;');
 
