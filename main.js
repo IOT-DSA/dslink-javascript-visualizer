@@ -1297,21 +1297,33 @@
           }))
           .append('div')
           .attr('class', 'graph')
-          .on('click', function() {
+          .on('mousedown', function() {
             var target = d3.event.target;
-            window.requestAnimationFrame(function() {
-              if(target !== document.body && target !== div.node() && target !== dom.node() && target !== svg.node())
+            if(target !== document.body && target !== div.node() && target !== dom.node() && target !== svg.node())
+              return;
+
+            var x = d3.event.screenX;
+            var y = d3.event.screenY;
+
+            var domNode = d3.select(this).node();
+            var mouseup = function(event) {
+              domNode.removeEventListener('mouseup', mouseup);
+              if(event.screenX !== x || event.screenY !== y)
                 return;
 
-              if(!props.hidden)
-                props.hide();
+              window.requestAnimationFrame(function() {
+                if(!props.hidden)
+                  props.hide();
 
-                if(props.valueListener) {
-                  props.value.value.remove('value', props.valueListener);
-                  props.value = null;
-                  props.valueListener = null;
-                }
-            });
+                  if(props.valueListener) {
+                    props.value.value.remove('value', props.valueListener);
+                    props.value = null;
+                    props.valueListener = null;
+                  }
+              });
+            };
+
+            domNode.addEventListener('mouseup', mouseup);
           });
 
       dom = div.append('div');
