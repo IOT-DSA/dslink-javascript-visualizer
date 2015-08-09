@@ -309,6 +309,17 @@
     value: null,
     valueListener: null,
     hidden: true,
+    _data: null,
+    data: function(data) {
+      props._data = [];
+      data.forEach(function(d) {
+        props._data.push(d);
+        if(d.type === 'expandable' && !d.hidden)
+          props._data.concat(d.children);
+      });
+
+      props.recycler.data(props._data);
+    },
     hide: function() {
       props.hidden = !props.hidden;
       if(props.hidden) {
@@ -339,7 +350,17 @@
       props.recycler.node.style('transform', util.matrix().translate(256, 0)());
 
       props.recycler.on('render', function(el, node) {
-        el.html(node);
+        if(node.type === 'text') {
+          el.html(node.text);
+          return;
+        }
+
+        if(node.type === 'expandable') {
+          el.html(node.name);
+          return;
+        }
+
+        el.text('stub');
       });
     }
   };
@@ -602,7 +623,7 @@
                 props.valueListener = null;
               }
 
-              props.recycler.data(visualizer.tooltipInfo(d));
+              props.data(visualizer.tooltipInfo(d));
               props.recycler.update();
 
               if(props.hidden)
@@ -1192,8 +1213,19 @@
       limited = limited || false;
       var rows = [];
 
+      var addRawRow = function(html) {
+        if(limited) {
+          rows.push(html);
+          return;
+        }
+        rows.push({
+          type: 'text',
+          text: html
+        });
+      };
+
       var addRow = function(content, style) {
-        rows.push('<div class="legend-item" style="text-align:right;' + style + '">' + content + '</div>');
+        addRawRow('<div class="legend-item" style="text-align:right;' + style + '">' + content + '</div>');
       };
 
       var addTitleRow = function(title, content, style) {
@@ -1201,7 +1233,7 @@
         if(!limited && style.indexOf('background-color') == -1 && rows.length > 0)
           style += 'background-color:rgba(0,0,0,0.2);';
         var contentBlock = '<div class="legend-item legend-content">' + content + '</div>';
-        rows.push('<div class="legend-container" style="' + style + '"><div class="legend-item legend-title">' + title + '</div>' + contentBlock + '</div>');
+        addRawRow('<div class="legend-container" style="' + style + '"><div class="legend-item legend-title">' + title + '</div>' + contentBlock + '</div>');
       };
 
       addTitleRow('<span style="color:' + types.getColor(d) + '">' + types.getType(d).toUpperCase() + '</span>', d.node.remotePath);
