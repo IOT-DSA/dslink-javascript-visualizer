@@ -48,6 +48,23 @@
 
       return f;
     },
+    rowBuilder: function() {
+      var rows = [];
+
+      return {
+        rows: rows,
+        addRow: function(content, style) {
+          rows.push('<div class="legend-item" style="text-align:right;' + style + '">' + content + '</div>');
+          return rows;
+        },
+        addTitleRow: function(title, content, style) {
+          style = style || '';
+          var contentBlock = '<div class="legend-item legend-content">' + content + '</div>';
+          rows.push('<div class="legend-container" style="' + style + '"><div class="legend-item legend-title">' + title + '</div>' + contentBlock + '</div>');
+          return rows;
+        }
+      };
+    },
     asyncFor: function(to, callback) {
       var f = 0;
       var i = 0;
@@ -109,7 +126,7 @@
       this.viewportRows = Math.ceil(this.viewportHeight / this.rowHeight);
 
       this.node = this.parent.append('div')
-          .on('scroll.recycler', this.render);
+          .on('scroll.recycler', this.render.bind(this));
 
       this.node.append('div')
           .attr('class', 'recycler-hidden');
@@ -174,29 +191,31 @@
             return d;
           });
 
+      var that = this;
       items.enter().insert('div', 'div.recycler-hidden')
           .attr('class', 'recycler-item')
           .style('height', this.rowHeight + 'px')
           .style('line-height', this.rowHeight + 'px')
           .on('click', function(d) {
-            var scrollTop = this.scrollTop();
-            var index = Math.floor(scrollTop / this.rowHeight);
+            var scrollTop = that.scrollTop();
+            var index = Math.floor(scrollTop / that.rowHeight);
 
-            var node = this._data[index + d];
-            this.emit('click', node);
-          }.bind(this));
+            var node = that._data[index + d];
+            that.emit('click', d3.select(this), node);
+          });
 
       items.exit().remove();
       this.render();
       return this;
     },
     render: function() {
+      // hacky, for d3
+      var that = this;
+
       window.requestAnimationFrame(function() {
         var scrollTop = this.scrollTop();
         var index = Math.floor(scrollTop / this.rowHeight);
 
-        // hacky, for d3
-        var that = this;
         this.node.selectAll('div.recycler-item')
           .style('transform', function(d) {
             return util.matrix().translate(0, (index + d) * this.rowHeight)();
@@ -311,14 +330,25 @@
     hidden: true,
     _data: null,
     data: function(data) {
-      props._data = [];
-      data.forEach(function(d) {
-        props._data.push(d);
-        if(d.type === 'expandable' && !d.hidden)
-          props._data.concat(d.children);
-      });
+      props._data = data;
+      var _data = [];
+      var addAll = function(arr) {
+        arr.forEach(function(d) {
+          if(typeof d === 'string') {
+            d = {
+              type: 'text',
+              text: d
+            };
+          }
 
-      props.recycler.data(props._data);
+          _data.push(d);
+          if(d.type === 'node' && !d.hidden)
+            addAll(d.children);
+        });
+      };
+
+      addAll(data);
+      props.recycler.data(_data);
     },
     hide: function() {
       props.hidden = !props.hidden;
@@ -349,17 +379,29 @@
 
       props.recycler.node.style('transform', util.matrix().translate(256, 0)());
 
+      props.recycler.on('click', function(el, node) {
+        if(node.type === 'node') {
+          node.hidden = !node.hidden;
+
+          props.data(props._data);
+          props.recycler.update();
+        }
+      });
+
       props.recycler.on('render', function(el, node) {
         if(node.type === 'text') {
           el.html(node.text);
           return;
         }
 
-        if(node.type === 'expandable') {
-          el.html(node.name);
+        if(node.type === 'node') {
+          var data = '<div class="legend-container"><div class="color" style="background-color:' + types.colors[node.node] + ';"></div><div style="float:left;">' + node.name + '</div><img class="expand' + (node.hidden ? '' : ' flip') + '" src="images/expand.svg"></img></div>';
+
+          el.html(data);
           return;
         }
 
+        console.log(typeof node);
         el.text('stub');
       });
     }
@@ -608,14 +650,15 @@
           })
           .on('click', function(d) {
             var onClick = function() {
+              var promise;
               if(!d.visualizer.listed) {
-                var promise = visualizer.listChildren(d);
                 setTimeout(function() {
                   promise.then(function() {
                     visualizer.update(d);
                   });
                 }, 400);
               }
+              promise = visualizer.listChildren(d);
 
               if(props.valueListener) {
                 props.value.value.remove('value', props.valueListener);
@@ -623,8 +666,75 @@
                 props.valueListener = null;
               }
 
-              props.data(visualizer.tooltipInfo(d));
+              var tooltipInfo = visualizer.tooltipInfo(d);
+
+              props.data(tooltipInfo);
               props.recycler.update();
+
+              promise.then(function() {
+                var actions = util.rowBuilder().addRow('actions', 'text-align:left;');
+                var values = util.rowBuilder().addRow('values', 'text-align:left;');
+
+                (d._children || d.children || []).forEach(function(child) {
+                  if(types.getType(child) === 'action') {
+                    var builder = util.rowBuilder();
+
+                    var config = child.node.configs;
+                    var keys = Object.keys(config);
+
+                    if(keys.indexOf('$params') > 0 && Array.isArray(config['$params'])) {
+                      var params = config['$params'];
+                      if(params.length > 0) {
+                        builder.addRow('params', 'text-align:left;');
+
+                        params.forEach(function(param) {
+                          builder.addTitleRow(param.name, param.type, 'background-color: rgba(0,0,0,0.3);');
+                        });
+                      }
+                    }
+
+                    if(keys.indexOf('$columns') > 0 && Array.isArray(config['$columns'])) {
+                      var columns = config['$columns'];
+                      if(columns.length > 0) {
+                        builder.addRow('columns', 'text-align:left;');
+
+                        columns.forEach(function(column) {
+                          builder.addTitleRow(column.name, column.type, 'background-color: rgba(0,0,0,0.3);');
+                        });
+                      }
+                    }
+
+                    actions.push({
+                      type: 'node',
+                      node: 'action',
+                      name: child.name,
+                      hidden: true,
+                      children: builder.rows
+                    });
+                  }
+
+                  if(types.getType(child) === 'value') {
+                    values.push({
+                      type: 'node',
+                      node: 'value',
+                      name: child.name,
+                      hidden: true,
+                      children: [{
+                        type: 'text',
+                        text: 'shhh i\'m hidden'
+                      }]
+                    });
+                  }
+                });
+
+                var arr = tooltipInfo;
+                if(actions.length > 1)
+                  arr = arr.concat(actions);
+                if(values.length > 1)
+                  arr = arr.concat(values);
+                props.data(arr);
+                props.recycler.update();
+              });
 
               if(props.hidden)
                 props.hide();
@@ -831,7 +941,6 @@
           visualizer.toggle(child);
         });
 
-        child.visualizer.promise = promise;
         promises.push(promise);
       });
 
@@ -1211,57 +1320,42 @@
     },
     tooltipInfo: function(d, limited) {
       limited = limited || false;
-      var rows = [];
+      var rawBuilder = util.rowBuilder();
+      var builder = Object.create(rawBuilder);
 
-      var addRawRow = function(html) {
-        if(limited) {
-          rows.push(html);
-          return;
-        }
-        rows.push({
-          type: 'text',
-          text: html
-        });
-      };
-
-      var addRow = function(content, style) {
-        addRawRow('<div class="legend-item" style="text-align:right;' + style + '">' + content + '</div>');
-      };
-
-      var addTitleRow = function(title, content, style) {
+      builder.addTitleRow = function(title, content, style) {
         style = style || '';
-        if(!limited && style.indexOf('background-color') == -1 && rows.length > 0)
+        if(!limited && style.indexOf('background-color') == -1 && rawBuilder.rows.length > 0)
           style += 'background-color:rgba(0,0,0,0.2);';
-        var contentBlock = '<div class="legend-item legend-content">' + content + '</div>';
-        addRawRow('<div class="legend-container" style="' + style + '"><div class="legend-item legend-title">' + title + '</div>' + contentBlock + '</div>');
+        rawBuilder.addTitleRow(title, content, style);
       };
 
-      addTitleRow('<span style="color:' + types.getColor(d) + '">' + types.getType(d).toUpperCase() + '</span>', d.node.remotePath);
+      builder.addTitleRow('<span style="color:' + types.getColor(d) + '">' + types.getType(d).toUpperCase() + '</span>', d.node.remotePath);
 
       var children = Object.keys(d.node.children).length;
       if(types.getType(d) === 'node' && children > 0)
-        addRow(children + ' children');
+        builder.addRow(children + ' children');
 
       if(types.getType(d) === 'value') {
         var type = d.node.configs['$type'];
-        addTitleRow('type', type);
+        builder.addTitleRow('type', type);
 
         if(type === 'map' && d.value.value != null) {
-          addRow('value', 'text-align:left;');
+          builder.addRow('value', 'text-align:left;');
           var map = d.value.value;
           Object.keys(map).forEach(function(key) {
             var value = map[key];
             value = (value == null ? '<span style="color:#f1c40f;">null</span>' : value.toString());
             if(value.trim().length == 0)
               value = '<span style="color:#f1c40f;">\' \'</span>';
-            addTitleRow(key, value, 'background-color: rgba(0,0,0,0.1);');
+            builder.addTitleRow(key, value, 'background-color: rgba(0,0,0,0.1);');
           });
         } else {
           var value = d.value.value == null ? '<span id="value"><span style="color:#f1c40f;">null</span></span>' :
               (d.value.value.toString().search(re_weburl) > -1 ?
                   '<span id="value"><a src="">URL</a></span>' :
                   '<span id="value">' + d.value.value.toString() + '</span>');
-          addTitleRow('value', value);
+          builder.addTitleRow('value', value);
           var listener = d.value.on('value', function(value) {
             var value = d.value.value == null ? '<span style="color:#f1c40f;">null</span>' :
                 (d.value.value.toString().search(re_weburl) > -1 ?
@@ -1275,7 +1369,7 @@
             node.select('#ts').text(d.value.ts);
           });
 
-          addTitleRow('stamp', '<span id="ts">' + d.value.ts + '</span>', 'color:' + COLOR_VALUE + ';');
+          builder.addTitleRow('stamp', '<span id="ts">' + d.value.ts + '</span>', 'color:' + COLOR_VALUE + ';');
 
           if(limited) {
             visualizer.tooltipValue = listener;
@@ -1292,29 +1386,29 @@
 
         if(keys.indexOf('$params') > 0 && Array.isArray(config['$params'])) {
           var params = config['$params'];
-          addRow('params', 'text-align:left;');
+          builder.addRow('params', 'text-align:left;');
 
           params.forEach(function(param) {
-            addTitleRow(param.name, param.type, 'background-color: rgba(0,0,0,0.3);');
+            builder.addTitleRow(param.name, param.type, 'background-color: rgba(0,0,0,0.3);');
           });
         }
 
         if(keys.indexOf('$columns') > 0 && Array.isArray(config['$columns'])) {
           var columns = config['$columns'];
-          addRow('columns', 'text-align:left;');
+          builder.addRow('columns', 'text-align:left;');
 
           columns.forEach(function(column) {
-            addTitleRow(column.name, column.type, 'background-color: rgba(0,0,0,0.3);');
+            builder.addTitleRow(column.name, column.type, 'background-color: rgba(0,0,0,0.3);');
           });
         }
       }
 
       if(d.node.configs['$disconnectedTs']) {
-        addRow('disconnected', 'color: #bdc3c7;');
-        addRow(util.humanize(new Date(d.node.configs['$disconnectedTs'])), 'color: #bdc3c7;');
+        builder.addRow('disconnected', 'color: #bdc3c7;');
+        builder.addRow(util.humanize(new Date(d.node.configs['$disconnectedTs'])), 'color: #bdc3c7;');
       }
 
-      return rows;
+      return builder.rows;
     },
     done: function() {
       console.log('done');
