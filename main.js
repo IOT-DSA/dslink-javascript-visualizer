@@ -1,6 +1,13 @@
 (function() {
   'use strict';
 
+  // hacky, but awesome
+  Object.defineProperty(Array.prototype, 'last', {
+    get: function() {
+      return this[this.length - 1];
+    }
+  });
+
   var util = {
     getUrlParams: function() {
       var urlParams = {},
@@ -375,11 +382,15 @@
       }
     },
     done: function() {
+      var builder = util.rowBuilder();
       props.recycler = new util.recycler().classAttr('props').update();
 
       props.recycler.node.style('transform', util.matrix().translate(256, 0)());
 
       props.recycler.on('click', function(el, node) {
+        if(node.click)
+          node.click();
+
         if(node.type === 'node') {
           node.hidden = !node.hidden;
 
@@ -398,6 +409,11 @@
           var data = '<div class="legend-container"><div class="color" style="background-color:' + types.colors[node.node] + ';"></div><div style="float:left;">' + node.name + '</div><img class="expand' + (node.hidden ? '' : ' flip') + '" src="images/expand.svg"></img></div>';
 
           el.html(data);
+          return;
+        }
+
+        if(node.type === 'form') {
+          el.html(builder.addTitleRow(node.name, node.hint, 'background-color:rgba(0,0,0,0.2);').last);
           return;
         }
 
@@ -677,40 +693,48 @@
 
                 (d._children || d.children || []).forEach(function(child) {
                   if(types.getType(child) === 'action') {
-                    var builder = util.rowBuilder();
+                    var rows = [];
+                    var map = {
+                      type: 'node',
+                      node: 'action',
+                      name: child.name,
+                      hidden: true,
+                      store: {},
+                      children: rows
+                    };
 
                     var config = child.node.configs;
                     var keys = Object.keys(config);
 
                     if(keys.indexOf('$params') > 0 && Array.isArray(config['$params'])) {
                       var params = config['$params'];
-                      if(params.length > 0) {
-                        builder.addRow('params', 'text-align:left;');
-
-                        params.forEach(function(param) {
-                          builder.addTitleRow(param.name, param.type, 'background-color: rgba(0,0,0,0.3);');
+                      params.forEach(function(param) {
+                        rows.push({
+                          type: 'form',
+                          hint: param.type,
+                          store: map.store,
+                          name: param.name
                         });
-                      }
+                      });
                     }
 
+                    rows.push({
+                      type: 'text',
+                      text: '<div style="width: 100%;height: 100%;padding:8px;background-color: rgba(0,0,0,0.3);"><div class="btn invoke-btn">Invoke</div></div>',
+                      click: function() {
+
+                      }
+                    });
+
+/*
                     if(keys.indexOf('$columns') > 0 && Array.isArray(config['$columns'])) {
                       var columns = config['$columns'];
-                      if(columns.length > 0) {
-                        builder.addRow('columns', 'text-align:left;');
-
-                        columns.forEach(function(column) {
-                          builder.addTitleRow(column.name, column.type, 'background-color: rgba(0,0,0,0.3);');
-                        });
-                      }
+                      columns.forEach(function(column) {
+                        builder.addTitleRow(column.name, column.type, 'background-color: rgba(0,0,0,0.2);');
+                      });
                     }
-
-                    actions.push({
-                      type: 'node',
-                      node: 'action',
-                      name: child.name,
-                      hidden: true,
-                      children: builder.rows
-                    });
+*/
+                    actions.push(map);
                   }
 
                   if(types.getType(child) === 'value') {

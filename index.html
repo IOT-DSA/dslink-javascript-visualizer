@@ -50,9 +50,8 @@
         border-radius: 4px;
       }
 
-      #connect-btn {
+      .btn {
         height: 32px;
-        background-color: #3498db;
         color: white;
         padding: 9px;
         border-radius: 4px;
@@ -62,9 +61,22 @@
         -ms-user-select: none;
       }
 
+      .btn:hover {
+        cursor: pointer;
+      }
+
+      .invoke-btn {
+        background-color: #e74c3c;
+        line-height: 16px;
+        text-align: center;
+      }
+
+      #connect-btn {
+        background-color: #3498db;
+      }
+
       #connect-btn:hover {
         background-color: #5faee3;
-        cursor: pointer;
       }
 
       #connect-btn:active {
@@ -359,7 +371,7 @@
     <p id="title">DSA Network Visualizer</p>
     <div id="container">
       <input id="broker-url" type="text" value="http://rnd.iot-dsa.org/conn" autocomplete="on" placeholder="URL to Broker"></input>
-      <div id="connect-btn" style="margin-left: 16px;">Connect</div>
+      <div id="connect-btn" class="btn" style="margin-left: 16px;">Connect</div>
     </div>
     <!-- d3 version 3.5.6 -->
     <script type="text/javascript" src="dist/regex-weburl.js"></script>
