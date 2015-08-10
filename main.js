@@ -64,9 +64,10 @@
           rows.push('<div class="legend-item" style="text-align:right;' + style + '">' + content + '</div>');
           return rows;
         },
-        addTitleRow: function(title, content, style) {
+        addTitleRow: function(title, content, style, opt) {
+          opt = opt || {};
           style = style || '';
-          var contentBlock = '<div class="legend-item legend-content">' + content + '</div>';
+          var contentBlock = opt.contentBlock ? opt.contentBlock(content) : ('<div class="legend-item legend-content">' + content + '</div>');
           rows.push('<div class="legend-container" style="' + style + '"><div class="legend-item legend-title">' + title + '</div>' + contentBlock + '</div>');
           return rows;
         }
@@ -413,11 +414,33 @@
         }
 
         if(node.type === 'form') {
-          el.html(builder.addTitleRow(node.name, node.hint, 'background-color:rgba(0,0,0,0.2);').last);
+          if(node.listener) {
+            node.listenerNode.removeEventListener('input', node.listener);
+
+            node.listenerNode = null;
+            node.listener = null;
+          }
+
+          el.html(builder.addTitleRow(node.name, '', 'background-color:rgba(0,0,0,0.2);', {
+            contentBlock: function(content) {
+              var content = '<input class="textbox legend-item legend-content" type="text" placeholder="' + node.hint + '" class="legend-item legend-content" ';
+              if(node.store[node.name]) {
+                content += 'value="' + node.store[node.name] + '"';
+              }
+              content += '></div>';
+              return content;
+            }
+          }).last);
+
+          node.listener = function() {
+            node.store[node.name] = node.listenerNode.value;
+          };
+
+          node.listenerNode = el.select('input.textbox').node();
+          node.listenerNode.addEventListener('input', node.listener);
           return;
         }
 
-        console.log(typeof node);
         el.text('stub');
       });
     }
@@ -674,7 +697,7 @@
                   });
                 }, 400);
               }
-              promise = visualizer.listChildren(d);
+              promise = d.visualizer.listed ? d.visualizer.promise : visualizer.listChildren(d);
 
               if(props.valueListener) {
                 props.value.value.remove('value', props.valueListener);
@@ -720,13 +743,33 @@
 
                     rows.push({
                       type: 'text',
-                      text: '<div style="width: 100%;height: 100%;padding:8px;background-color: rgba(0,0,0,0.3);"><div class="btn invoke-btn">Invoke</div></div>',
+                      text: '<div style="width: 100%;height: 100%;padding:8px;background-color: rgba(0,0,0,0.2);"><div class="btn invoke-btn">Invoke</div></div>',
                       click: function() {
+                        var p = {};
+                        map.children.forEach(function(param) {
+                          if(param.type !== 'form')
+                            return;
+                          var value = param.store[param.name];
+                          if(param.hint === 'bool')
+                            value = value === 'true' ? true : (value === 'false' ? false : null);
+                          if(param.hint === 'int' || param.hint === 'uint')
+                            value = parseInt(value, 10);
+                          if(param.hint === 'number')
+                            value = parseFloat(value);
+                          if(param.hint.indexOf('enum') === 0)
+                            // TODO
+                          if(param.hint === 'map') {}
+                            // TODO
+                          if(param.hint === 'array') {}
+                            // TODO
 
+                          p[param.name] = value;
+                        });
+                        visualizer.requester.invoke(child.node.remotePath, p);
                       }
                     });
 
-/*
+/* // TODO
                     if(keys.indexOf('$columns') > 0 && Array.isArray(config['$columns'])) {
                       var columns = config['$columns'];
                       columns.forEach(function(column) {
@@ -965,6 +1008,7 @@
           visualizer.toggle(child);
         });
 
+        child.visualizer.promise = promise;
         promises.push(promise);
       });
 
@@ -1141,6 +1185,8 @@
         };
 
         visualizer.requester.subscribe(path, subscriptions[path]);
+      }).catch(function(e) {
+        console.log(e);
       });
     },
     connect: function(url) {
