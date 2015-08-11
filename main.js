@@ -333,8 +333,7 @@
 
   var props = {
     recycler: null,
-    value: null,
-    valueListener: null,
+    valueListener: [],
     hidden: true,
     _data: null,
     data: function(data) {
@@ -699,11 +698,11 @@
               }
               promise = d.visualizer.listed ? d.visualizer.promise : visualizer.listChildren(d);
 
-              if(props.valueListener) {
-                props.value.value.remove('value', props.valueListener);
-                props.value = null;
-                props.valueListener = null;
-              }
+              props.valueListener.forEach(function(listener) {
+                listener.value.value.remove('value', listener.listener);
+              });
+
+              props.valueListener = [];
 
               var tooltipInfo = visualizer.tooltipInfo(d);
 
@@ -781,15 +780,18 @@
                   }
 
                   if(types.getType(child) === 'value') {
+                    var rows = util.rowBuilder();
+
+                    visualizer.tooltipValueInfo(rows, child, false);
+
                     values.push({
                       type: 'node',
                       node: 'value',
                       name: child.name,
                       hidden: true,
-                      children: [{
-                        type: 'text',
-                        text: 'shhh i\'m hidden'
-                      }]
+                      children: rows.rows.map(function(row) {
+                        return '<div style="height:100%;width:100%;background-color:rgba(0,0,0,0.1);">' + row + '</div>';
+                      })
                     });
                   }
                 });
@@ -1388,6 +1390,51 @@
           .duration(400)
           .style('transform', util.matrix().scale(scale).translate(x, y)());
     },
+    tooltipValueInfo: function(builder, d, limited) {
+      var type = d.node.configs['$type'];
+      builder.addTitleRow('type', type);
+
+      if(type === 'map' && d.value.value != null) {
+        builder.addRow('value', 'text-align:left;');
+        var map = d.value.value;
+        Object.keys(map).forEach(function(key) {
+          var value = map[key];
+          value = (value == null ? '<span style="color:#f1c40f;">null</span>' : value.toString());
+          if(value.trim().length == 0)
+            value = '<span style="color:#f1c40f;">\' \'</span>';
+          builder.addTitleRow(key, value, 'background-color: rgba(0,0,0,0.1);');
+        });
+      } else {
+        var value = d.value.value == null ? '<span id="value"><span style="color:#f1c40f;">null</span></span>' :
+            (d.value.value.toString().search(re_weburl) > -1 ?
+                '<span id="value"><a src="">URL</a></span>' :
+                '<span id="value">' + d.value.value.toString() + '</span>');
+        builder.addTitleRow('value', value);
+        var listener = d.value.on('value', function(value) {
+          var value = d.value.value == null ? '<span style="color:#f1c40f;">null</span>' :
+              (d.value.value.toString().search(re_weburl) > -1 ?
+                  '<a src="">URL</a>' :
+                  d.value.value.toString());
+          if(value.trim().length == 0)
+            value = '<span style="color:#f1c40f;">\' \'</span>';
+
+          var node = (limited ? tooltip.node : props.recycler.node);
+          node.select('#value').html(value);
+          node.select('#ts').text(d.value.ts);
+        });
+
+        builder.addTitleRow('stamp', '<span id="ts">' + d.value.ts + '</span>', 'color:' + COLOR_VALUE + ';');
+
+        if(limited) {
+          visualizer.tooltipValue = listener;
+        } else {
+          props.valueListener.push({
+            value: d,
+            listener: listener
+          });
+        }
+      }
+    },
     tooltipInfo: function(d, limited) {
       limited = limited || false;
       var rawBuilder = util.rowBuilder();
@@ -1407,47 +1454,7 @@
         builder.addRow(children + ' children');
 
       if(types.getType(d) === 'value') {
-        var type = d.node.configs['$type'];
-        builder.addTitleRow('type', type);
-
-        if(type === 'map' && d.value.value != null) {
-          builder.addRow('value', 'text-align:left;');
-          var map = d.value.value;
-          Object.keys(map).forEach(function(key) {
-            var value = map[key];
-            value = (value == null ? '<span style="color:#f1c40f;">null</span>' : value.toString());
-            if(value.trim().length == 0)
-              value = '<span style="color:#f1c40f;">\' \'</span>';
-            builder.addTitleRow(key, value, 'background-color: rgba(0,0,0,0.1);');
-          });
-        } else {
-          var value = d.value.value == null ? '<span id="value"><span style="color:#f1c40f;">null</span></span>' :
-              (d.value.value.toString().search(re_weburl) > -1 ?
-                  '<span id="value"><a src="">URL</a></span>' :
-                  '<span id="value">' + d.value.value.toString() + '</span>');
-          builder.addTitleRow('value', value);
-          var listener = d.value.on('value', function(value) {
-            var value = d.value.value == null ? '<span style="color:#f1c40f;">null</span>' :
-                (d.value.value.toString().search(re_weburl) > -1 ?
-                    '<a src="">URL</a>' :
-                    d.value.value.toString());
-            if(value.trim().length == 0)
-              value = '<span style="color:#f1c40f;">\' \'</span>';
-
-            var node = (limited ? tooltip.node : props.recycler.node);
-            node.select('#value').html(value);
-            node.select('#ts').text(d.value.ts);
-          });
-
-          builder.addTitleRow('stamp', '<span id="ts">' + d.value.ts + '</span>', 'color:' + COLOR_VALUE + ';');
-
-          if(limited) {
-            visualizer.tooltipValue = listener;
-          } else {
-            props.value = d;
-            props.valueListener = listener;
-          }
-        }
+        visualizer.tooltipValueInfo(builder, d, limited);
       }
 
       if(types.getType(d) === 'action' && !limited) {
@@ -1511,11 +1518,11 @@
                 if(!props.hidden)
                   props.hide();
 
-                  if(props.valueListener) {
-                    props.value.value.remove('value', props.valueListener);
-                    props.value = null;
-                    props.valueListener = null;
-                  }
+                  props.valueListener.forEach(function(listener) {
+                    listener.value.value.remove('value', listener.listener);
+                  });
+
+                  props.valueListener = [];
               });
             };
 
