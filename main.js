@@ -142,6 +142,12 @@
       this._data = [];
 
       this.classes = [];
+    },
+    storage: function(key, value) {
+      if(localStorage.getItem(key) !== null)
+        return JSON.parse(localStorage.getItem(key));
+      localStorage.setItem(key, JSON.stringify(value));
+      return value;
     }
   };
 
@@ -281,11 +287,19 @@
 
   var types = {
     toggleable: {
-      action: true,
-      value: false,
-      list: false,
-      invoke: false,
-      subscribe: false
+      action: util.storage('toggleable.action', true),
+      value: util.storage('toggleable.value', false),
+      list: util.storage('toggleable.list', true),
+      invoke: util.storage('toggleable.invoke', true),
+      subscribe: util.storage('toggleable.subscribe', true),
+      updateStorage: function() {
+        localStorage.setItem('toggleable.action', JSON.stringify(types.toggleable.action));
+        localStorage.setItem('toggleable.value', JSON.stringify(types.toggleable.value));
+
+        localStorage.setItem('toggleable.list', JSON.stringify(types.toggleable.list));
+        localStorage.setItem('toggleable.invoke', JSON.stringify(types.toggleable.invoke));
+        localStorage.setItem('toggleable.subscribe', JSON.stringify(types.toggleable.subscribe));
+      }
     },
     colors: {
       node: COLOR_NODE,
@@ -1630,6 +1644,7 @@
 
           textEl.on('click', function() {
             types.toggleable[text.toLowerCase()] = !types.toggleable[text.toLowerCase()];
+            types.toggleable.updateStorage();
 
             textEl.attr('class', types.toggleable[text.toLowerCase()] ? 'disabled legend-toggleable' : 'legend-toggleable');
             visualizer.update(root);
@@ -1651,6 +1666,7 @@
 
             traceTextEl.on('click', function() {
               types.toggleable[traceText.toLowerCase()] = !types.toggleable[traceText.toLowerCase()];
+              types.toggleable.updateStorage();
 
               traceTextEl.attr('class', types.toggleable[traceText.toLowerCase()] ? 'disabled legend-toggleable' : 'legend-toggleable');
               visualizer.update(root);
