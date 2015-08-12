@@ -481,23 +481,26 @@
       paths = {};
       var updatePath = function(n) {
         if(!n.hidden) {
-          if((types.getType(n) === 'action' && types.toggleable.action) || (types.getType(n) === 'value' && types.toggleable.value)) {
-            if(n.children && !n._children) {
+          if((types.getType(n) === 'action' && types.toggleable.action) ||
+              (types.getType(n) === 'value' && types.toggleable.value) ||
+              (n.node && n.node.configs['$hidden'] === true)) {
+            if(!n._children)
               visualizer.toggle(n);
-            }
             n.hidden = true;
             return;
           }
-
-          paths[n.node.remotePath] = n;
         } else {
-          if((n.node && types.getType(n) === 'action' && !types.toggleable.action) || (n.node && types.getType(n) === 'value' && !types.toggleable.value)) {
-            if(n._children && !n.children) {
+          if((n.node && types.getType(n) === 'action' && !types.toggleable.action) ||
+              (n.node && types.getType(n) === 'value' && !types.toggleable.value) ||
+              (n.node && n.node.configs['$hidden'] === false)) {
+            if(n._children)
               visualizer.toggle(n);
-            }
             n.hidden = false;
-            return;
           }
+        }
+
+        if(!n.hidden) {
+          paths[n.node.remotePath] = n;
         }
 
         if(n.children) {
@@ -1032,7 +1035,8 @@
         var promise = visualizer.list(child.node.remotePath, child).then(function() {
           return visualizer.subscribe(child.node.remotePath, child);
         }).then(function() {
-          visualizer.toggle(child);
+          if(!child._children)
+            visualizer.toggle(child);
         });
 
         child.visualizer.promise = promise;
