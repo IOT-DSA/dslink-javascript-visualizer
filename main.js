@@ -744,6 +744,12 @@
 
               props.valueListener = [];
 
+              if(types.getType(d) === 'broker') {
+                if(!props.hidden)
+                  props.hide();
+                return;
+              }
+
               var tooltipInfo = visualizer.tooltipInfo(d);
 
               props.data(tooltipInfo);
