@@ -481,7 +481,23 @@
       paths = {};
       var updatePath = function(n) {
         if(!n.hidden) {
+          if((types.getType(n) === 'action' && types.toggleable.action) || (types.getType(n) === 'value' && types.toggleable.value)) {
+            if(n.children && !n._children) {
+              visualizer.toggle(n);
+            }
+            n.hidden = true;
+            return;
+          }
+
           paths[n.node.remotePath] = n;
+        } else {
+          if((n.node && types.getType(n) === 'action' && !types.toggleable.action) || (n.node && types.getType(n) === 'value' && !types.toggleable.value)) {
+            if(n._children && !n.children) {
+              visualizer.toggle(n);
+            }
+            n.hidden = false;
+            return;
+          }
         }
 
         if(n.children) {
@@ -494,6 +510,8 @@
       updatePath(root);
     },
     update: function(n) {
+      visualizer.updatePaths();
+
       var depthSize = [1];
       var depth = function(obj, d) {
         if(obj.children && obj.children.length > 0) {
@@ -510,19 +528,17 @@
       var oldX = root.x;
 
       var height = 200 + (20 * Math.max.apply(Math, depthSize));
-      var width = depthSize.length * 300;
+      var width = depthSize.length * 150;
 
       tree = tree.size([height, width]);
 
       var nodes = tree.nodes(root);
 
-      // fixed size to 300px per layer
+      // fixed size to 150px per layer
       // move depth over to the left one to account for hidden root
       nodes.forEach(function(node) {
-        node.y = Math.max(300 * (node.depth - 1), 0);
+        node.y = Math.max(150 * (node.depth - 1), 0);
       });
-
-      visualizer.updatePaths();
 
       var yDiff = root.y - (oldY || root.y);
       var xDiff = root.x - (oldX || root.x);
@@ -865,7 +881,9 @@
             return node.links && node.links.length > 0;
           }).reduce(function(original, node) {
             return original.concat(node.links);
-          }, []), function(d) {
+          }, []).filter(function(link) {
+            return !types.toggleable[link.type];
+          }), function(d) {
             return d.path + '/' + d.origin;
           });
 
@@ -1589,30 +1607,54 @@
           .text('Visualizer');
 
       Object.keys(types.colors).forEach(function(type, i) {
+        var item = legend.append('div')
+            .attr('class', 'legend-item');
+
+        item.append('div').attr('class', 'color')
+            .style('background-color', types.colors[type]);
+
+        var content = item.append('div').style({
+          float: 'left',
+          display: 'inline-block'
+        });
+
         var text = type.toUpperCase();
+        var textEl = content.append('span').text(text);
+
         if(types.toggleable[text.toLowerCase()] !== void 0) {
-          if(types.toggleable[text.toLowerCase()])
-            text = '<span class="disabled">' + text + '</span>';
-          text = '<span class="legend-toggleable">' + text + '</span>';
+          textEl.attr('class', types.toggleable[text.toLowerCase()] ? 'disabled legend-toggleable' : 'legend-toggleable');
+
+          textEl.on('click', function() {
+            types.toggleable[text.toLowerCase()] = !types.toggleable[text.toLowerCase()];
+
+            textEl.attr('class', types.toggleable[text.toLowerCase()] ? 'disabled legend-toggleable' : 'legend-toggleable');
+            visualizer.update(root);
+          });
         } else {
-          text = '<span class="inactive">' + text + '</span>';
+          textEl.attr('class', 'inactive');
         }
 
         var traceColors = Object.keys(types.traceColors);
         if(traceColors.length > i) {
+          content.append('span').style('opacity', 0.2).text(' / ');
+
           var traceText = traceColors[i].toUpperCase();
+          var traceTextEl = content.append('span').text(traceText);
+
           if(types.toggleable[traceText.toLowerCase()] !== void 0) {
-            if(types.toggleable[text.toLowerCase()])
-              traceText = '<span class="disabled">' + traceText + '</span>';
-            traceText = '<span class="legend-toggleable">' + traceText + '</span>';
+            var disabled = types.toggleable[traceText.toLowerCase()];
+            traceTextEl.attr('class', types.toggleable[traceText.toLowerCase()] ? 'disabled legend-toggleable' : 'legend-toggleable');
+
+            traceTextEl.on('click', function() {
+              types.toggleable[traceText.toLowerCase()] = !types.toggleable[traceText.toLowerCase()];
+
+              traceTextEl.attr('class', types.toggleable[traceText.toLowerCase()] ? 'disabled legend-toggleable' : 'legend-toggleable');
+              visualizer.update(root);
+            });
           } else {
-            traceText = '<span class="inactive">' + traceText + '</span>';
+            traceTextEl.attr('class', 'inactive');
           }
-          text += ' <span style="opacity:0.2;">/</span> ' + traceText;
         }
-        legend.append('div')
-            .attr('class', 'legend-item')
-            .html('<div class="color" style="float:left;background-color:' + types.colors[type] + ';"></div><div style="float:left;display:inline-block;">' + text + '</div>');
       });
 
       home = d3.select('body').append('div')
