@@ -280,6 +280,13 @@
   var TRACE_REQUESTER = '/sys/trace/traceRequester';
 
   var types = {
+    toggleable: {
+      action: true,
+      value: false,
+      list: false,
+      invoke: false,
+      subscribe: false
+    },
     colors: {
       node: COLOR_NODE,
       action: COLOR_ACTION,
@@ -782,7 +789,7 @@
                   if(types.getType(child) === 'value') {
                     var rows = util.rowBuilder();
 
-                    visualizer.tooltipValueInfo(rows, child, false);
+                    visualizer.tooltipValueInfo(rows, child, false, false);
 
                     values.push({
                       type: 'node',
@@ -790,7 +797,7 @@
                       name: child.name,
                       hidden: true,
                       children: rows.rows.map(function(row) {
-                        return '<div style="height:100%;width:100%;background-color:rgba(0,0,0,0.1);">' + row + '</div>';
+                        return '<div id="' + child.realName + '" style="height:100%;width:100%;background-color:rgba(0,0,0,0.1);">' + row + '</div>';
                       })
                     });
                   }
@@ -1390,7 +1397,8 @@
           .duration(400)
           .style('transform', util.matrix().scale(scale).translate(x, y)());
     },
-    tooltipValueInfo: function(builder, d, limited) {
+    tooltipValueInfo: function(builder, d, limited, toplevel) {
+      toplevel = toplevel !== void 0 ? toplevel : true;
       var type = d.node.configs['$type'];
       builder.addTitleRow('type', type);
 
@@ -1418,7 +1426,7 @@
           if(value.trim().length == 0)
             value = '<span style="color:#f1c40f;">\' \'</span>';
 
-          var node = (limited ? tooltip.node : props.recycler.node);
+          var node = limited ? tooltip.node : (toplevel ? props.recycler.node : props.recycler.node.selectAll('#' + d.realName));
           node.select('#value').html(value);
           node.select('#ts').text(d.value.ts);
         });
@@ -1582,9 +1590,26 @@
 
       Object.keys(types.colors).forEach(function(type, i) {
         var text = type.toUpperCase();
+        if(types.toggleable[text.toLowerCase()] !== void 0) {
+          if(types.toggleable[text.toLowerCase()])
+            text = '<span class="disabled">' + text + '</span>';
+          text = '<span class="legend-toggleable">' + text + '</span>';
+        } else {
+          text = '<span class="inactive">' + text + '</span>';
+        }
+
         var traceColors = Object.keys(types.traceColors);
-        if(traceColors.length > i)
-          text += ' <span style="opacity:0.2;">/</span> ' + traceColors[i].toUpperCase();
+        if(traceColors.length > i) {
+          var traceText = traceColors[i].toUpperCase();
+          if(types.toggleable[traceText.toLowerCase()] !== void 0) {
+            if(types.toggleable[text.toLowerCase()])
+              traceText = '<span class="disabled">' + traceText + '</span>';
+            traceText = '<span class="legend-toggleable">' + traceText + '</span>';
+          } else {
+            traceText = '<span class="inactive">' + traceText + '</span>';
+          }
+          text += ' <span style="opacity:0.2;">/</span> ' + traceText;
+        }
         legend.append('div')
             .attr('class', 'legend-item')
             .html('<div class="color" style="float:left;background-color:' + types.colors[type] + ';"></div><div style="float:left;display:inline-block;">' + text + '</div>');
