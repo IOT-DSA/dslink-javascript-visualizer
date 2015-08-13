@@ -172,6 +172,8 @@
       return listener;
     },
     remove: function(name, listener) {
+      if(!this.listeners[name] || this.listeners[name].indexOf(listener) === -1)
+        return null;
       return this.listeners[name].splice(this.listeners[name].indexOf(listener), 1);
     }
   };
@@ -718,7 +720,7 @@
           })
           .on('mouseout', function(d) {
             if(visualizer.tooltipValue) {
-              d.value.remove('value', visualizer.tooltipValue);
+              d.emitter.remove('value', visualizer.tooltipValue);
               visualizer.tooltipValue = null;
             }
 
@@ -739,7 +741,8 @@
               promise = d.visualizer.listed ? d.visualizer.promise : visualizer.listChildren(d);
 
               props.valueListener.forEach(function(listener) {
-                listener.value.value.remove('value', listener.listener);
+                listener.value.emitter.remove('value', listener.listener);
+                listener.value.emitter.remove('child', listener.listener);
               });
 
               props.valueListener = [];
@@ -755,100 +758,149 @@
               props.data(tooltipInfo);
               props.recycler.update();
 
-              promise.then(function() {
-                var actions = util.rowBuilder().addRow('actions', 'text-align:left;');
-                var values = util.rowBuilder().addRow('values', 'text-align:left;');
+              var actions = util.rowBuilder().addRow('actions', 'text-align:left;');
+              var values = util.rowBuilder().addRow('values', 'text-align:left;');
 
-                (d._children || d.children || []).forEach(function(child) {
-                  if(types.getType(child) === 'action') {
-                    var rows = [];
-                    var map = {
-                      type: 'node',
-                      node: 'action',
-                      name: child.name,
-                      hidden: true,
-                      store: {},
-                      children: rows
-                    };
+              var addChild = function(child, update) {
+                update = update === void 0 ? true : update;
 
-                    var config = child.node.configs;
-                    var keys = Object.keys(config);
+                if(types.getType(child) === 'action') {
+                  var rows = [];
+                  var map = {
+                    type: 'node',
+                    node: 'action',
+                    name: child.name,
+                    hidden: true,
+                    store: {},
+                    children: rows
+                  };
 
-                    if(keys.indexOf('$params') > 0 && Array.isArray(config['$params'])) {
-                      var params = config['$params'];
-                      params.forEach(function(param) {
-                        rows.push({
-                          type: 'form',
-                          hint: param.type,
-                          store: map.store,
-                          name: param.name
-                        });
+                  var config = child.node.configs;
+                  var keys = Object.keys(config);
+
+                  if(keys.indexOf('$params') > 0 && Array.isArray(config['$params'])) {
+                    var params = config['$params'];
+                    params.forEach(function(param) {
+                      rows.push({
+                        type: 'form',
+                        hint: param.type,
+                        store: map.store,
+                        name: param.name
                       });
-                    }
-
-                    rows.push({
-                      type: 'text',
-                      text: '<div style="width: 100%;height: 100%;padding:8px;background-color: rgba(0,0,0,0.2);"><div class="btn invoke-btn">Invoke</div></div>',
-                      click: function() {
-                        var p = {};
-                        map.children.forEach(function(param) {
-                          if(param.type !== 'form')
-                            return;
-                          var value = param.store[param.name];
-                          if(param.hint === 'bool')
-                            value = value === 'true' ? true : (value === 'false' ? false : null);
-                          if(param.hint === 'int' || param.hint === 'uint')
-                            value = parseInt(value, 10);
-                          if(param.hint === 'number')
-                            value = parseFloat(value);
-                          if(param.hint.indexOf('enum') === 0)
-                            // TODO
-                          if(param.hint === 'map') {}
-                            // TODO
-                          if(param.hint === 'array') {}
-                            // TODO
-
-                          p[param.name] = value;
-                        });
-                        visualizer.requester.invoke(child.node.remotePath, p);
-                      }
                     });
+                  }
+
+                  rows.push({
+                    type: 'text',
+                    text: '<div style="width: 100%;height: 100%;padding:8px;background-color: rgba(0,0,0,0.2);"><div class="btn invoke-btn">Invoke</div></div>',
+                    click: function() {
+                      var p = {};
+                      map.children.forEach(function(param) {
+                        if(param.type !== 'form')
+                          return;
+                        var value = param.store[param.name];
+                        if(param.hint === 'bool')
+                          value = value === 'true' ? true : (value === 'false' ? false : null);
+                        if(param.hint === 'int' || param.hint === 'uint')
+                          value = parseInt(value, 10);
+                        if(param.hint === 'number')
+                          value = parseFloat(value);
+                        if(param.hint.indexOf('enum') === 0)
+                          // TODO
+                        if(param.hint === 'map') {}
+                          // TODO
+                        if(param.hint === 'array') {}
+                          // TODO
+
+                        p[param.name] = value;
+                      });
+                      visualizer.requester.invoke(child.node.remotePath, p);
+                    }
+                  });
 
 /* // TODO
-                    if(keys.indexOf('$columns') > 0 && Array.isArray(config['$columns'])) {
-                      var columns = config['$columns'];
-                      columns.forEach(function(column) {
-                        builder.addTitleRow(column.name, column.type, 'background-color: rgba(0,0,0,0.2);');
-                      });
-                    }
-*/
-                    actions.push(map);
-                  }
-
-                  if(types.getType(child) === 'value') {
-                    var rows = util.rowBuilder();
-
-                    visualizer.tooltipValueInfo(rows, child, false, false);
-
-                    values.push({
-                      type: 'node',
-                      node: 'value',
-                      name: child.name,
-                      hidden: true,
-                      children: rows.rows.map(function(row) {
-                        return '<div id="' + child.realName + '" style="height:100%;width:100%;background-color:rgba(0,0,0,0.1);">' + row + '</div>';
-                      })
+                  if(keys.indexOf('$columns') > 0 && Array.isArray(config['$columns'])) {
+                    var columns = config['$columns'];
+                    columns.forEach(function(column) {
+                      builder.addTitleRow(column.name, column.type, 'background-color: rgba(0,0,0,0.2);');
                     });
                   }
+*/
+                  actions.push(map);
+                }
+
+                if(types.getType(child) === 'value') {
+                  var rows = util.rowBuilder();
+
+                  visualizer.tooltipValueInfo(rows, child, false, false);
+
+                  values.push({
+                    type: 'node',
+                    node: 'value',
+                    name: child.name,
+                    hidden: true,
+                    children: rows.rows.map(function(row) {
+                      return '<div id="' + child.realName + '" style="height:100%;width:100%;background-color:rgba(0,0,0,0.1);">' + row + '</div>';
+                    })
+                  });
+                }
+
+                if(update) {
+                  var t = tooltipInfo;
+                  if(actions.length > 1)
+                    t = t.concat(actions);
+                  if(values.length > 1)
+                    t = t.concat(values);
+                  props.data(t);
+                  props.recycler.update();
+                }
+              };
+
+              var removeChild = function(child) {
+                if(types.getType(child) === 'action' || types.getType(child) === 'value') {
+                  var parent = types.getType(child) === 'action' ? actions : values;
+                  [].concat(parent).forEach(function(map, index) {
+                    if(map === child)
+                      parent.splice(index, 1);
+                  });
+                }
+
+                var t = tooltipInfo;
+                if(actions.length > 1)
+                  t = t.concat(actions);
+                if(values.length > 1)
+                  t = t.concat(values);
+                props.data(t);
+                props.recycler.update();
+              };
+
+              promise.then(function() {
+                (d._children || d.children || []).forEach(function(map) {
+                  addChild(map, false);
                 });
 
-                var arr = tooltipInfo;
+                var t = tooltipInfo;
                 if(actions.length > 1)
-                  arr = arr.concat(actions);
+                  t = t.concat(actions);
                 if(values.length > 1)
-                  arr = arr.concat(values);
-                props.data(arr);
+                  t = t.concat(values);
+
+                props.data(t);
                 props.recycler.update();
+
+                var listener = function(type, map) {
+                  if(type === 'add')
+                    addChild(map);
+                  if(type === 'remove')
+                    removeChild(map);
+                };
+
+                props.valueListener.push({
+                  value: d,
+                  listener: listener
+                });
+
+                d.emitter.on('child', listener);
               });
 
               if(props.hidden)
@@ -1082,8 +1134,6 @@
               return;
 
             var node = children[child];
-            if(node.configs['$disconnectedTs'])
-              return;
 
             var map = {
               name: node.configs['$name'] || child,
@@ -1092,13 +1142,16 @@
               node: node,
               visualizer: {
                 listed: false
-              }
+              },
+              emitter: new util.EventEmitter()
             };
 
             if(opt.addChild)
               opt.addChild(map, child, children);
 
             (obj._children || obj.children || (obj.children = [])).push(map);
+            if(obj.emitter)
+              obj.emitter.emit('child', 'add', map);
 
             var path = map.node.remotePath;
             if(obj.visualizer.listed) {
@@ -1117,6 +1170,8 @@
               if(child.realName === change) {
                 if(opt.removeChild)
                   opt.removeChild(child, change, children);
+                if(obj.emitter)
+                  obj.emitter.emit('child', 'remove', child);
                 (obj._children || obj.children).splice(index, 1);
                 path = child.node.remotePath;
               }
@@ -1176,9 +1231,10 @@
       if(types.getType(map) !== 'value')
         return;
 
-      map.value = new util.EventEmitter();
-      map.value.ts = null;
-      map.value.value = null;
+      map.value = {
+        ts: null,
+        value: null
+      };
 
       // for update selections
       map.updateS = [];
@@ -1188,7 +1244,7 @@
 
       return new Promise(function(resolve, reject) {
         subscriptions[path] = function(subUpdate) {
-          map.value.emit('value', subUpdate.value);
+          map.emitter.emit('value', subUpdate.value);
           map.value.ts = util.humanize(new Date(subUpdate.ts));
           map.value.value = subUpdate.value;
 
@@ -1460,7 +1516,7 @@
                 '<span id="value"><a src="">URL</a></span>' :
                 '<span id="value">' + d.value.value.toString() + '</span>');
         builder.addTitleRow('value', value);
-        var listener = d.value.on('value', function(value) {
+        var listener = d.emitter.on('value', function(value) {
           var value = d.value.value == null ? '<span style="color:#f1c40f;">null</span>' :
               (d.value.value.toString().search(re_weburl) > -1 ?
                   '<a src="">URL</a>' :
@@ -1569,7 +1625,8 @@
                   props.hide();
 
                   props.valueListener.forEach(function(listener) {
-                    listener.value.value.remove('value', listener.listener);
+                    listener.value.emitter.remove('value', listener.listener);
+                    listener.value.emitter.remove('child', listener.listener);
                   });
 
                   props.valueListener = [];
