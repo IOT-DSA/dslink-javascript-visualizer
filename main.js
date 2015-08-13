@@ -135,7 +135,7 @@
         // TODO
 
       return value;
-    }
+    },
     EventEmitter: function() {
       this.listeners = {};
     },
