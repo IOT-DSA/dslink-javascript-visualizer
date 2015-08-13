@@ -120,6 +120,22 @@
 
       return month + '/' + date + '/' + year + ' at ' + hours + ':' + minutes + ':' + seconds;
     },
+    parseType: function(type, value) {
+      if(type === 'bool')
+        value = value === 'true' ? true : (value === 'false' ? false : null);
+      if(type === 'int' || type === 'uint')
+        value = parseInt(value, 10);
+      if(type === 'number')
+        value = parseFloat(value);
+      if(type.indexOf('enum') === 0)
+        // TODO
+      if(type === 'map') {}
+        // TODO
+      if(type === 'array') {}
+        // TODO
+
+      return value;
+    }
     EventEmitter: function() {
       this.listeners = {};
     },
@@ -435,7 +451,11 @@
           return;
         }
 
-        if(node.type === 'form') {
+        if(node.type === 'form' || node.type === 'writable_value') {
+          if(node.value) {
+            node.store[node.name] = node.value.toString();
+          }
+
           if(node.listener) {
             node.listenerNode.removeEventListener('input', node.listener);
 
@@ -798,21 +818,7 @@
                       map.children.forEach(function(param) {
                         if(param.type !== 'form')
                           return;
-                        var value = param.store[param.name];
-                        if(param.hint === 'bool')
-                          value = value === 'true' ? true : (value === 'false' ? false : null);
-                        if(param.hint === 'int' || param.hint === 'uint')
-                          value = parseInt(value, 10);
-                        if(param.hint === 'number')
-                          value = parseFloat(value);
-                        if(param.hint.indexOf('enum') === 0)
-                          // TODO
-                        if(param.hint === 'map') {}
-                          // TODO
-                        if(param.hint === 'array') {}
-                          // TODO
-
-                        p[param.name] = value;
+                        p[param.name] = util.parseType(param.hint, param.store[param.name]);
                       });
                       visualizer.requester.invoke(child.node.remotePath, p);
                     }
@@ -1511,6 +1517,25 @@
           builder.addTitleRow(key, value, 'background-color: rgba(0,0,0,0.1);');
         });
       } else {
+        if(d.node && d.node.configs['$writable'] && d.node.configs['$writable'] !== 'never' && !limited) {
+          builder.rows.push({
+            type: 'writable_value',
+            hint: d.node.configs['$type'],
+            value: d.value.value,
+            store: d.value,
+            name: d.realName
+          });
+
+          builder.rows.push({
+            type: 'text',
+            text: '<div style="width: 100%;height: 100%;padding:8px;background-color: rgba(0,0,0,0.2);"><div class="btn set-btn">Set</div></div>',
+            click: function() {
+              visualizer.requester.set(d.node.remotePath, util.parseType(d.node.configs['$type'], d.value[d.realName]));
+            }
+          });
+          return;
+        }
+
         var value = d.value.value == null ? '<span id="value"><span style="color:#f1c40f;">null</span></span>' :
             (d.value.value.toString().search(re_weburl) > -1 ?
                 '<span id="value"><a src="">URL</a></span>' :
