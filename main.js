@@ -400,7 +400,7 @@
 
           _data.push(d);
           if(d.type === 'node' && !d.hidden)
-            addAll(d.nodes);
+            addAll(d.children);
         });
       };
 
@@ -845,7 +845,7 @@
                     text: '<div style="width: 100%;height: 100%;padding:8px;background-color: rgba(0,0,0,0.2);"><div class="btn invoke-btn">Invoke</div></div>',
                     click: function() {
                       var p = {};
-                      map.nodes.forEach(function(param) {
+                      map.children.forEach(function(param) {
                         if(param.type !== 'form')
                           return;
                         p[param.name] = util.parseType(param.hint, param.store[param.name]);
