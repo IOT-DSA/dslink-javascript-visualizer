@@ -135,7 +135,7 @@
         // TODO
 
       return value;
-    }
+    },
     EventEmitter: function() {
       this.listeners = {};
     },
@@ -348,6 +348,17 @@
   };
 
   var tree = d3.layout.tree();
+  tree.children(function(child) {
+    return ((!child.nodes || !child.toggled) ? [] : child.nodes).filter(function(n) {
+      if((n.node && types.getType(n) === 'action' && types.toggleable.action) ||
+          (n.node && types.getType(n) === 'value' && types.toggleable.value) ||
+          (n.node && n.node.configs['$hidden'] === true)) {
+        return false;
+      } else {
+        return true;
+      }
+    });
+  });
 
   var normalDiagonal = d3.svg.diagonal()
       .projection(function(d) { return [Math.round(d.y), Math.round(d.x)]; });
@@ -389,7 +400,7 @@
 
           _data.push(d);
           if(d.type === 'node' && !d.hidden)
-            addAll(d.children);
+            addAll(d.nodes);
         });
       };
 
@@ -483,8 +494,42 @@
           return;
         }
 
+        if(node.type === 'dropdown') {
+          if(node.value) {
+            node.store[node.name] = node.value.toString();
+          }
+
+          if(node.listener) {
+            node.listenerNode.removeEventListener('input', node.listener);
+
+            node.listenerNode = null;
+            node.listener = null;
+          }
+
+          el.html(builder.addTitleRow(node.name, '', 'background-color:rgba(0,0,0,0.2);', {
+            contentBlock: function(content) {
+              var content = '<select class="textbox legend-item legend-content">s';
+              if(node.store[node.name]) {
+                content += 'value="' + node.store[node.name] + '"';
+              }
+              content += '></div>';
+              return content;
+            }
+          }).last);
+
+          node.listener = function() {
+            node.store[node.name] = node.listenerNode.value;
+          };
+
+          node.listenerNode = el.select('input.textbox').node();
+          node.listenerNode.addEventListener('input', node.listener);
+          return;
+        }
+
         el.text('stub');
       });
+
+      console.log(root);
     }
   };
 
@@ -505,42 +550,20 @@
       return transform;
     },
     toggle: function(d) {
-      if (d.children) {
-        d._children = d.children;
-        d.children = null;
-      } else {
-        d.children = d._children;
-        d._children = null;
-      }
+      d.toggled = !d.toggled;
     },
     updatePaths: function() {
       paths = {};
       var updatePath = function(n) {
-        if(!n.hidden) {
-          if((types.getType(n) === 'action' && types.toggleable.action) ||
-              (types.getType(n) === 'value' && types.toggleable.value) ||
-              (n.node && n.node.configs['$hidden'] === true)) {
-            if(!n._children)
-              visualizer.toggle(n);
-            n.hidden = true;
-            return;
-          }
-        } else {
-          if((n.node && types.getType(n) === 'action' && !types.toggleable.action) ||
-              (n.node && types.getType(n) === 'value' && !types.toggleable.value) ||
-              (n.node && n.node.configs['$hidden'] === false)) {
-            if(n._children)
-              visualizer.toggle(n);
-            n.hidden = false;
-          }
-        }
+        if(tree.children()(n) !== n)
+          return;
 
         if(!n.hidden) {
           paths[n.node.remotePath] = n;
         }
 
-        if(n.children) {
-          n.children.forEach(function(child) {
+        if(n.toggled && n.nodes) {
+          n.nodes.forEach(function(child) {
             updatePath(child);
           });
         }
@@ -553,8 +576,8 @@
 
       var depthSize = [1];
       var depth = function(obj, d) {
-        if(obj.children && obj.children.length > 0) {
-          obj.children.forEach(function(child) {
+        if(obj.toggled && obj.nodes && obj.nodes.length > 0) {
+          obj.nodes.forEach(function(child) {
             depthSize[d] = !!depthSize[d] ? depthSize[d] + 1 : 1;
             depth(child, d + 1);
           });
@@ -697,7 +720,7 @@
       var node = dom.selectAll('div.node')
           .data(nodes, function(d) { return d.node.remotePath; })
           .style('background-color', function(d) {
-            if(((!d.children && !d._children) || (d.children && !d._children)) && d.visualizer.listed && types.getType(d) !== 'action')
+            if((d.toggled || (!d.toggled && d.nodes.length === 0) || d.nodes.length == 0) && d.visualizer.listed && types.getType(d) !== 'action')
               return 'white';
             return types.getColor(d);
           });
@@ -719,7 +742,7 @@
           .style('background-color', function(d) {
             if(!d.visualizer.listed)
               return types.getColor(d);
-            if(((!d.children && !d._children) || (d.children && !d._children)) && types.getType(d) !== 'action')
+            if((!d.nodes || d.nodes.length == 0) && d.visualizer.listed && types.getType(d) !== 'action')
               return 'white';
             return types.getColor(d);
           })
@@ -767,16 +790,23 @@
 
               props.valueListener = [];
 
-              if(types.getType(d) === 'broker') {
-                if(!props.hidden)
-                  props.hide();
-                return;
-              }
-
               var tooltipInfo = visualizer.tooltipInfo(d);
 
               props.data(tooltipInfo);
               props.recycler.update();
+
+              if(props.hidden)
+                props.hide();
+
+              visualizer.toggle(d);
+              visualizer.update(d);
+
+              var pos = visualizer.getScreenPos(d);
+              if(pos.x <= 0 || pos.y <= 0 || pos.x >= innerWidth || pos.y >= innerHeight)
+                visualizer.moveTo(d);
+
+              if(types.getType(d) === 'broker')
+                return;
 
               var actions = util.rowBuilder().addRow('actions', 'text-align:left;');
               var values = util.rowBuilder().addRow('values', 'text-align:left;');
@@ -815,7 +845,7 @@
                     text: '<div style="width: 100%;height: 100%;padding:8px;background-color: rgba(0,0,0,0.2);"><div class="btn invoke-btn">Invoke</div></div>',
                     click: function() {
                       var p = {};
-                      map.children.forEach(function(param) {
+                      map.nodes.forEach(function(param) {
                         if(param.type !== 'form')
                           return;
                         p[param.name] = util.parseType(param.hint, param.store[param.name]);
@@ -881,7 +911,7 @@
               };
 
               promise.then(function() {
-                (d._children || d.children || []).forEach(function(map) {
+                (d.nodes || []).forEach(function(map) {
                   addChild(map, false);
                 });
 
@@ -908,16 +938,6 @@
 
                 d.emitter.on('child', listener);
               });
-
-              if(props.hidden)
-                props.hide();
-
-              visualizer.toggle(d);
-              visualizer.update(d);
-
-              var pos = visualizer.getScreenPos(d);
-              if(pos.x <= 0 || pos.y <= 0 || pos.x >= innerWidth || pos.y >= innerHeight)
-                visualizer.moveTo(d);
             };
 
             if(d.visualizer.promise) {
@@ -990,6 +1010,7 @@
       var traceEnter = trace.enter().append('path')
           .attr('class', 'trace')
           .attr('d', traceFunc)
+          .attr('marker-end', 'url(#marker)')
           .attr('stroke', function(d) {
             return types.getColorFromTrace(d);
           })
@@ -1044,14 +1065,14 @@
                 if(p[p.length - 1] === '/')
                   p = p.substring(0, p.length - 1);
 
-                if(paths[p] && paths[p]._children) {
+                if(paths[p] && paths[p].toggled) {
                   visualizer.toggle(paths[p]);
                 } else if(!paths[p]) {
                   var np = node.node.remotePath + '/' + parts.slice(0, i - 1).join('/');
                   if(np[np.length - 1] === '/')
                     np = np.substring(0, np.length - 1);
                   return visualizer.listChildren(paths[np]).then(function() {
-                    if(paths[np]._children)
+                    if(paths[np].toggled)
                       visualizer.toggle(paths[np]);
                     visualizer.updatePaths();
                   });
@@ -1109,12 +1130,9 @@
       d.visualizer.listed = true;
 
       var promises = [];
-      (d._children || d.children || (d.children = [])).forEach(function(child) {
+      (d.nodes || (d.nodes = [])).forEach(function(child) {
         var promise = visualizer.list(child.node.remotePath, child).then(function() {
           return visualizer.subscribe(child.node.remotePath, child);
-        }).then(function() {
-          if(!child._children)
-            visualizer.toggle(child);
         });
 
         child.visualizer.promise = promise;
@@ -1144,7 +1162,8 @@
             var map = {
               name: node.configs['$name'] || child,
               realName: child,
-              children: [],
+              nodes: [],
+              toggled: false,
               node: node,
               visualizer: {
                 listed: false
@@ -1155,7 +1174,7 @@
             if(opt.addChild)
               opt.addChild(map, child, children);
 
-            (obj._children || obj.children || (obj.children = [])).push(map);
+            (obj.nodes || (obj.nodes = [])).push(map);
             if(obj.emitter)
               obj.emitter.emit('child', 'add', map);
 
@@ -1172,13 +1191,13 @@
               return;
 
             var path;
-            [].concat(obj._children || obj.children).forEach(function(child, index) {
+            [].concat(obj.nodes).forEach(function(child, index) {
               if(child.realName === change) {
                 if(opt.removeChild)
                   opt.removeChild(child, change, children);
                 if(obj.emitter)
                   obj.emitter.emit('child', 'remove', child);
-                (obj._children || obj.children).splice(index, 1);
+                obj.nodes.splice(index, 1);
                 path = child.node.remotePath;
               }
             });
@@ -1211,7 +1230,7 @@
               if(change.indexOf('@') === 0 || change.indexOf('$') === 0)
                 return;
               if(keys.indexOf(change) > -1) {
-                var children = obj._children || obj.children;
+                var children = obj.nodes;
                 if(!children || !children.some(function(child) {
                   return child.realName === change;
                 })) {
@@ -1315,8 +1334,9 @@
           visualizer: {
             depth: 1
           },
-          children: [],
-          hidden: true
+          nodes: [],
+          hidden: true,
+          toggled: true
         };
 
         visualizer.requester = requester;
@@ -1329,7 +1349,8 @@
             realName: mapName,
             visualizer: {},
             link: opt.link || null,
-            children: []
+            toggled: true,
+            nodes: []
           };
 
           return visualizer.list(path + '/conns', map, {
@@ -1423,7 +1444,7 @@
             return visualizer.listChildren(map);
           }).then(function() {
             var promises = [];
-            root.children.push(map);
+            root.nodes.push(map);
 
             var addChild = function(child, children, initial) {
               initial = initial || true;
@@ -1433,8 +1454,9 @@
                     visualizer: {
                       depth: depth + 1
                     },
-                    children: [root],
-                    hidden: true
+                    nodes: [root],
+                    hidden: true,
+                    toggled: true
                   };
                 }
 
@@ -1442,7 +1464,7 @@
                   var r = root;
                   var i = root.visualizer.depth;
                   for(; i < depth; i++) {
-                    r = r.children[0];
+                    r = r.nodes[0];
                   }
 
                   return r;
@@ -1465,9 +1487,9 @@
             };
 
             var removeChild = function(change, children) {
-              [].concat(root.children).forEach(function(child, index) {
+              [].concat(root.nodes).forEach(function(child, index) {
                 if(child.realName === change)
-                  root.children.splice(index, 1);
+                  root.nodes.splice(index, 1);
               });
             };
 
@@ -1528,7 +1550,7 @@
 
           builder.rows.push({
             type: 'text',
-            text: '<div style="width: 100%;height: 100%;padding:8px;background-color: rgba(0,0,0,0.2);"><div class="btn set-btn">Set</div></div>',
+            text: '<div style="width: 100%;height: 100%;padding:8px;background-color: rgba(0,0,0,0.2);"><div class="btn set-btn">Set Value</div></div>',
             click: function() {
               visualizer.requester.set(d.node.remotePath, util.parseType(d.node.configs['$type'], d.value[d.realName]));
             }
@@ -1581,7 +1603,7 @@
       builder.addTitleRow('<span style="color:' + types.getColor(d) + '">' + types.getType(d).toUpperCase() + '</span>', d.node.remotePath);
 
       var children = Object.keys(d.node.children).length;
-      if(types.getType(d) === 'node' && children > 0)
+      if(children > 0)
         builder.addRow(children + ' children');
 
       if(types.getType(d) === 'value') {
@@ -1663,6 +1685,20 @@
 
       dom = div.append('div');
       svg = dom.append('svg');
+
+      var defs = svg.append('defs');
+
+      defs.append('marker')
+          .attr('id', 'marker')
+          .attr('markerHeight', 10)
+          .attr('markerWidth', 10)
+          .attr('markerUnits', 'strokeWidth')
+          .attr('orient', 'auto')
+          .attr('refX', 0)
+          .attr('refY', 0)
+          .append('path')
+          .attr('d', 'M 0,0 m -5,-5 L 5,0 L -5,5 Z')
+          .attr('fill', 'orange');
 
       tooltip = (function() {
         var node = d3.select('body').append('div')
