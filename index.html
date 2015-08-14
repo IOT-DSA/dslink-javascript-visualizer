@@ -249,13 +249,24 @@
         -moz-user-select: text;
       }
 
-      .props input.legend-content {
+      .props input.legend-content,
+      .props select.legend-content {
+        -webkit-appearance: none;
+        appearance: none;
+        outline-color: transparent !important;
+        outline-style: none !important;
         background-color: rgba(255,255,255,0.1);
+        border-radius: 0;
       }
 
-      .props input.legend-content:focus {
-        outline-color: transparent;
-        outline-style: none;
+      .props select.legend-content {
+        background-image: url('images/expand.svg');
+        background-position: 116px center;
+        background-repeat: no-repeat;
+      }
+
+      .props input.legend-content:focus,
+      .props select.legend-content:focus {
         background-color: rgba(255,255,255,0.15);
       }
 

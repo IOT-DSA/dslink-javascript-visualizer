@@ -307,9 +307,9 @@
     toggleable: {
       action: util.storage('toggleable.action', true),
       value: util.storage('toggleable.value', false),
-      list: util.storage('toggleable.list', true),
-      invoke: util.storage('toggleable.invoke', true),
-      subscribe: util.storage('toggleable.subscribe', true),
+      list: util.storage('toggleable.list', false),
+      invoke: util.storage('toggleable.invoke', false),
+      subscribe: util.storage('toggleable.subscribe', false),
       updateStorage: function() {
         localStorage.setItem('toggleable.action', JSON.stringify(types.toggleable.action));
         localStorage.setItem('toggleable.value', JSON.stringify(types.toggleable.value));
@@ -468,61 +468,59 @@
           }
 
           if(node.listener) {
-            node.listenerNode.removeEventListener('input', node.listener);
+            if(node.inputListener)
+              node.listenerNode.removeEventListener('input', node.inputListener);
+            if(node.changeListener)
+              node.listenerNode.removeEventListener('change', node.changeListener);
 
             node.listenerNode = null;
             node.listener = null;
           }
 
-          el.html(builder.addTitleRow(node.name, '', 'background-color:rgba(0,0,0,0.2);', {
-            contentBlock: function(content) {
-              var content = '<input class="textbox legend-item legend-content" type="text" placeholder="' + node.hint + '" class="legend-item legend-content" ';
-              if(node.store[node.name]) {
-                content += 'value="' + node.store[node.name] + '"';
+          if(node.hint.indexOf('enum') === 0) {
+            var enumTypes = node.hint.substring(5, node.hint.length - 1).split(',');
+
+            el.html(builder.addTitleRow(node.name, '', 'background-color:rgba(0,0,0,0.2);', {
+              contentBlock: function(content) {
+                var content = '<select class="textbox legend-item legend-content" type="text">';
+
+                enumTypes.forEach(function(type) {
+                  content += '<option';
+                  if(node.store[node.name] && node.store[node.name].toString() === type.toString())
+                    content += ' selected';
+                  content += '>' + type + '</option>';
+                });
+
+                content += '</select>';
+                return content;
               }
-              content += '></div>';
-              return content;
-            }
-          }).last);
+            }).last);
 
-          node.listener = function() {
-            node.store[node.name] = node.listenerNode.value;
-          };
+            node.changeListener = function() {
+              node.store[node.name] = node.listenerNode.value;
+            };
 
-          node.listenerNode = el.select('input.textbox').node();
-          node.listenerNode.addEventListener('input', node.listener);
-          return;
-        }
-
-        if(node.type === 'dropdown') {
-          if(node.value) {
-            node.store[node.name] = node.value.toString();
-          }
-
-          if(node.listener) {
-            node.listenerNode.removeEventListener('input', node.listener);
-
-            node.listenerNode = null;
-            node.listener = null;
-          }
-
-          el.html(builder.addTitleRow(node.name, '', 'background-color:rgba(0,0,0,0.2);', {
-            contentBlock: function(content) {
-              var content = '<select class="textbox legend-item legend-content">s';
-              if(node.store[node.name]) {
-                content += 'value="' + node.store[node.name] + '"';
+            node.listenerNode = el.select('select.textbox').node();
+            node.listenerNode.addEventListener('change', node.changeListener);
+          } else {
+            el.html(builder.addTitleRow(node.name, '', 'background-color:rgba(0,0,0,0.2);', {
+              contentBlock: function(content) {
+                var content = '<input class="textbox legend-item legend-content" type="text" placeholder="' + node.hint + '" ';
+                if(node.store[node.name]) {
+                  content += 'value="' + node.store[node.name] + '"';
+                }
+                content += '></div>';
+                return content;
               }
-              content += '></div>';
-              return content;
-            }
-          }).last);
+            }).last);
 
-          node.listener = function() {
-            node.store[node.name] = node.listenerNode.value;
-          };
+            node.inputListener = function() {
+              node.store[node.name] = node.listenerNode.value;
+            };
 
-          node.listenerNode = el.select('input.textbox').node();
-          node.listenerNode.addEventListener('input', node.listener);
+            node.listenerNode = el.select('input.textbox').node();
+            node.listenerNode.addEventListener('input', node.inputListener);
+          }
           return;
         }
 
