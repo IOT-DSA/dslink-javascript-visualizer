@@ -528,8 +528,6 @@
 
         el.text('stub');
       });
-
-      console.log(root);
     }
   };
 
@@ -555,9 +553,6 @@
     updatePaths: function() {
       paths = {};
       var updatePath = function(n) {
-        if(tree.children()(n) !== n)
-          return;
-
         if(!n.hidden) {
           paths[n.node.remotePath] = n;
         }
@@ -742,7 +737,7 @@
           .style('background-color', function(d) {
             if(!d.visualizer.listed)
               return types.getColor(d);
-            if((!d.nodes || d.nodes.length == 0) && d.visualizer.listed && types.getType(d) !== 'action')
+            if((d.toggled || (!d.toggled && d.nodes.length === 0) || d.nodes.length == 0) && d.visualizer.listed && types.getType(d) !== 'action')
               return 'white';
             return types.getColor(d);
           })
@@ -1010,7 +1005,9 @@
       var traceEnter = trace.enter().append('path')
           .attr('class', 'trace')
           .attr('d', traceFunc)
-          // .attr('marker-end', 'url(#marker)')
+          .attr('marker-end', function(d) {
+            return 'url(#marker_' + d.type + ')';
+          })
           .attr('stroke', function(d) {
             return types.getColorFromTrace(d);
           })
@@ -1688,17 +1685,26 @@
 
       var defs = svg.append('defs');
 
-      defs.append('marker')
-          .attr('id', 'marker')
-          .attr('markerHeight', 10)
-          .attr('markerWidth', 10)
-          .attr('markerUnits', 'strokeWidth')
-          .attr('orient', 'auto')
-          .attr('refX', 0)
-          .attr('refY', 0)
-          .append('path')
-          .attr('d', 'M 0,0 m -5,-5 L 5,0 L -5,5 Z')
-          .attr('fill', 'orange');
+      var addMarker = function(type) {
+        defs.append('marker')
+            .attr('id', 'marker_' + type)
+            .attr('markerHeight', 6)
+            .attr('markerWidth', 6)
+            .attr('viewBox', '0 0 10 10')
+            .attr('markerUnits', 'strokeWidth')
+            .attr('orient', 'auto')
+            .attr('refX', 5)
+            .attr('refY', 5)
+            .append('circle')
+            .attr('cx', 5)
+            .attr('cy', 5)
+            .attr('r', 5)
+            .attr('fill', types.traceColors[type]);
+      };
+
+      addMarker('list');
+      addMarker('subscribe');
+      addMarker('invoke');
 
       tooltip = (function() {
         var node = d3.select('body').append('div')
