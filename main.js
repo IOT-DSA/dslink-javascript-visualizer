@@ -1010,7 +1010,7 @@
       var traceEnter = trace.enter().append('path')
           .attr('class', 'trace')
           .attr('d', traceFunc)
-          .attr('marker-end', 'url(#marker)')
+          // .attr('marker-end', 'url(#marker)')
           .attr('stroke', function(d) {
             return types.getColorFromTrace(d);
           })
