@@ -984,7 +984,7 @@
           }).reduce(function(original, node) {
             return original.concat(node.links);
           }, []).filter(function(link) {
-            return !filter.toggleable[link.type];
+            return !filter.toggleable[link.type] && paths[link.source];
           }), function(d) {
             return d.path + '/' + d.origin;
           });
@@ -1011,9 +1011,9 @@
       var traceEnter = trace.enter().append('path')
           .attr('class', 'trace')
           .attr('d', traceFunc)
-          .attr('marker-end', function(d) {
-            return 'url(#marker_' + d.type + ')';
-          })
+          //.attr('marker-end', function(d) {
+          //  return 'url(#marker_' + d.type + ')';
+          //})
           .attr('stroke', function(d) {
             return types.getColorFromTrace(d);
           })
@@ -1452,7 +1452,7 @@
                   }
                 };
               }
-              var promise = visualizer.list(child.node.remotePath, child).then(function() {
+              var promise = visualizer.list(child.node.remotePath, child, opt).then(function() {
                 return visualizer.subscribe(child.node.remotePath, child);
               });
 
