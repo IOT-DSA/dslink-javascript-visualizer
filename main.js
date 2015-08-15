@@ -304,21 +304,6 @@
   var TRACE_REQUESTER = '/sys/trace/traceRequester';
 
   var types = {
-    toggleable: {
-      action: util.storage('toggleable.action', true),
-      value: util.storage('toggleable.value', false),
-      list: util.storage('toggleable.list', false),
-      invoke: util.storage('toggleable.invoke', false),
-      subscribe: util.storage('toggleable.subscribe', false),
-      updateStorage: function() {
-        localStorage.setItem('toggleable.action', JSON.stringify(types.toggleable.action));
-        localStorage.setItem('toggleable.value', JSON.stringify(types.toggleable.value));
-
-        localStorage.setItem('toggleable.list', JSON.stringify(types.toggleable.list));
-        localStorage.setItem('toggleable.invoke', JSON.stringify(types.toggleable.invoke));
-        localStorage.setItem('toggleable.subscribe', JSON.stringify(types.toggleable.subscribe));
-      }
-    },
     colors: {
       node: COLOR_NODE,
       action: COLOR_ACTION,
@@ -347,16 +332,39 @@
     }
   };
 
+  var filter = {
+    toggleable: {
+      action: util.storage('toggleable.action', true),
+      value: util.storage('toggleable.value', false),
+      list: util.storage('toggleable.list', false),
+      invoke: util.storage('toggleable.invoke', false),
+      subscribe: util.storage('toggleable.subscribe', false),
+      updateStorage: function() {
+        localStorage.setItem('toggleable.action', JSON.stringify(filter.toggleable.action));
+        localStorage.setItem('toggleable.value', JSON.stringify(filter.toggleable.value));
+
+        localStorage.setItem('toggleable.list', JSON.stringify(filter.toggleable.list));
+        localStorage.setItem('toggleable.invoke', JSON.stringify(filter.toggleable.invoke));
+        localStorage.setItem('toggleable.subscribe', JSON.stringify(filter.toggleable.subscribe));
+      }
+    },
+    extended: false
+  };
+
   var tree = d3.layout.tree();
   tree.children(function(child) {
     return ((!child.nodes || !child.toggled) ? [] : child.nodes).filter(function(n) {
-      if((n.node && types.getType(n) === 'action' && types.toggleable.action) ||
-          (n.node && types.getType(n) === 'value' && types.toggleable.value) ||
+      if((n.node && types.getType(n) === 'action' && filter.toggleable.action) ||
+          (n.node && types.getType(n) === 'value' && filter.toggleable.value) ||
           (n.node && n.node.configs['$hidden'] === true)) {
         return false;
-      } else {
-        return true;
       }
+
+      if(child.visualizer.broker && !filter.extended && n.realName !== 'conns' && n.realName !== 'downstream') {
+        return false;
+      }
+
+      return true;
     });
   });
 
@@ -976,7 +984,7 @@
           }).reduce(function(original, node) {
             return original.concat(node.links);
           }, []).filter(function(link) {
-            return !types.toggleable[link.type];
+            return !filter.toggleable[link.type];
           }), function(d) {
             return d.path + '/' + d.origin;
           });
@@ -1348,95 +1356,111 @@
             nodes: []
           };
 
-          return visualizer.list(path + '/conns', map, {
-            blacklist: opt.blacklist || [],
-            addChild: function(m, change, children) {
-              // TODO: Get better support for this, once an API is implemented to get broker path
-              if(change.indexOf('visualizer') === 0)
-                return;
+          return visualizer.list(path || '/', map, {}).then(function() {
+            map.visualizer.listed = true;
 
-              // code for trace requester
-              // TODO: Only trace actual requesters
-              m.links = [];
-              var trace = {
-                list: {},
-                subscribe: {},
-                invoke: {}
-              };
+            var promises = [];
+            (map.nodes || (map.nodes = [])).forEach(function(child) {
+              var opt = {};
+              if(child.realName === 'conns' || child.realName === 'downstream') {
+                opt = {
+                  blacklist: opt.blacklist || [],
+                  addChild: function(m, change, children) {
+                    // TODO: Get better support for this, once an API is implemented to get broker path
+                    if(change.indexOf('visualizer') === 0)
+                      return;
 
-              var req = visualizer.requester.invoke(path + TRACE_REQUESTER, {
-                requester: m.node.remotePath.substring(path.length),
-                sessionId: null
-              });
+                    // code for trace requester
+                    // TODO: Only trace actual requesters
+                    m.links = [];
+                    var trace = {
+                      list: {},
+                      subscribe: {},
+                      invoke: {}
+                    };
 
-              reqs.push({
-                path: m.node.remotePath,
-                stream: req
-              });
+                    var req = visualizer.requester.invoke(path + TRACE_REQUESTER, {
+                      requester: m.node.remotePath.substring(path.length),
+                      sessionId: null
+                    });
 
-              req.on('data', function(invokeUpdate) {
-                try {
-                  invokeUpdate.rows;
-                } catch(e) {
-                  return;
-                }
+                    reqs.push({
+                      path: m.node.remotePath,
+                      stream: req
+                    });
 
-                var r = invokeUpdate.rows;
-                var shouldUpdate = false;
-                r.forEach(function(row) {
-                  var added = row[4] === '+';
-                  var rid = row[2];
+                    req.on('data', function(invokeUpdate) {
+                      try {
+                        invokeUpdate.rows;
+                      } catch(e) {
+                        return;
+                      }
 
-                  if(added) {
-                    var t = trace[row[1]][path + row[0]];
-                    if(t) {
-                      t.amount++;
-                    } else if(path + row[0] !== m.node.remotePath) {
-                      m.links.push({
-                        source: m.node.remotePath,
-                        path: path + row[0],
-                        type: row[1],
-                        rid: row[2],
-                        amount: 1,
-                        trace: true
-                      });
+                      var r = invokeUpdate.rows;
+                      var shouldUpdate = false;
+                      r.forEach(function(row) {
+                        var added = row[4] === '+';
+                        var rid = row[2];
 
-                      trace[row[1]][path + row[0]] = m.links[m.links.length - 1];
-                      shouldUpdate = true;
-                    }
-                  } else {
-                    var shouldDeleteUpdate = false;
+                        if(added) {
+                          var t = trace[row[1]][path + row[0]];
+                          if(t) {
+                            t.amount++;
+                          } else if(path + row[0] !== m.node.remotePath) {
+                            m.links.push({
+                              source: m.node.remotePath,
+                              path: path + row[0],
+                              type: row[1],
+                              rid: row[2],
+                              amount: 1,
+                              trace: true
+                            });
 
-                    // TODO: Not sure if this supports unsubscribe
-                    setTimeout(function() {
-                      [].concat(m.links).forEach(function(link) {
-                        if(link.path === row[0] && link.type === row[1]) {
-                          if(link.amount > 1) {
-                            link.amount = link.amount - 1;
-                          } else {
-                            m.links.splice(m.links.indexOf(link), 1);
-                            delete trace[row[1]][path + row[0]];
-                            shouldDeleteUpdate = true;
+                            trace[row[1]][path + row[0]] = m.links[m.links.length - 1];
+                            shouldUpdate = true;
                           }
+                        } else {
+                          var shouldDeleteUpdate = false;
+
+                          // TODO: Not sure if this supports unsubscribe
+                          setTimeout(function() {
+                            [].concat(m.links).forEach(function(link) {
+                              if(link.path === row[0] && link.type === row[1]) {
+                                if(link.amount > 1) {
+                                  link.amount = link.amount - 1;
+                                } else {
+                                  m.links.splice(m.links.indexOf(link), 1);
+                                  delete trace[row[1]][path + row[0]];
+                                  shouldDeleteUpdate = true;
+                                }
+                              }
+                            });
+
+                            if(shouldDeleteUpdate && svg)
+                              visualizer.update(m);
+                          }, 400);
                         }
                       });
 
-                      if(shouldDeleteUpdate && svg)
+                      if(shouldUpdate && svg) {
                         visualizer.update(m);
-                    }, 400);
+                      }
+                    });
+                  },
+                  removeChild: function(m, change, children) {
+
                   }
-                });
-
-                if(shouldUpdate && svg) {
-                  visualizer.update(m);
-                }
+                };
+              }
+              var promise = visualizer.list(child.node.remotePath, child).then(function() {
+                return visualizer.subscribe(child.node.remotePath, child);
               });
-            },
-            removeChild: function(m, change, children) {
 
-            }
-          }).then(function() {
-            return visualizer.listChildren(map);
+              child.visualizer.promise = promise;
+              promises.push(promise);
+            });
+
+            return Promise.all(promises);
           }).then(function() {
             var promises = [];
             root.nodes.push(map);
@@ -1767,14 +1791,14 @@
         var text = type.toUpperCase();
         var textEl = content.append('span').text(text);
 
-        if(types.toggleable[text.toLowerCase()] !== void 0) {
-          textEl.attr('class', types.toggleable[text.toLowerCase()] ? 'disabled legend-toggleable' : 'legend-toggleable');
+        if(filter.toggleable[text.toLowerCase()] !== void 0) {
+          textEl.attr('class', filter.toggleable[text.toLowerCase()] ? 'disabled legend-toggleable' : 'legend-toggleable');
 
           textEl.on('click', function() {
-            types.toggleable[text.toLowerCase()] = !types.toggleable[text.toLowerCase()];
-            types.toggleable.updateStorage();
+            filter.toggleable[text.toLowerCase()] = !filter.toggleable[text.toLowerCase()];
+            filter.toggleable.updateStorage();
 
-            textEl.attr('class', types.toggleable[text.toLowerCase()] ? 'disabled legend-toggleable' : 'legend-toggleable');
+            textEl.attr('class', filter.toggleable[text.toLowerCase()] ? 'disabled legend-toggleable' : 'legend-toggleable');
             visualizer.update(root);
           });
         } else {
@@ -1788,15 +1812,15 @@
           var traceText = traceColors[i].toUpperCase();
           var traceTextEl = content.append('span').text(traceText);
 
-          if(types.toggleable[traceText.toLowerCase()] !== void 0) {
-            var disabled = types.toggleable[traceText.toLowerCase()];
-            traceTextEl.attr('class', types.toggleable[traceText.toLowerCase()] ? 'disabled legend-toggleable' : 'legend-toggleable');
+          if(filter.toggleable[traceText.toLowerCase()] !== void 0) {
+            var disabled = filter.toggleable[traceText.toLowerCase()];
+            traceTextEl.attr('class', filter.toggleable[traceText.toLowerCase()] ? 'disabled legend-toggleable' : 'legend-toggleable');
 
             traceTextEl.on('click', function() {
-              types.toggleable[traceText.toLowerCase()] = !types.toggleable[traceText.toLowerCase()];
-              types.toggleable.updateStorage();
+              filter.toggleable[traceText.toLowerCase()] = !filter.toggleable[traceText.toLowerCase()];
+              filter.toggleable.updateStorage();
 
-              traceTextEl.attr('class', types.toggleable[traceText.toLowerCase()] ? 'disabled legend-toggleable' : 'legend-toggleable');
+              traceTextEl.attr('class', filter.toggleable[traceText.toLowerCase()] ? 'disabled legend-toggleable' : 'legend-toggleable');
               visualizer.update(root);
             });
           } else {
@@ -1805,10 +1829,42 @@
         }
       });
 
+      var item = legend.append('div')
+          .attr('class', 'legend-item')
+          .style('font-size', '12px')
+          .style('text-align', 'center');
+
+      var basic, extended;
+
+      basic = item.append('span')
+          .attr('class', 'legend-toggleable')
+          .text('BASIC')
+          .on('click', function() {
+            filter.extended = !filter.extended;
+            basic.attr('class', filter.extended ? 'legend-toggleable disabled' : 'legend-toggleable');
+            extended.attr('class', !filter.extended ? 'legend-toggleable disabled' : 'legend-toggleable');
+            visualizer.update(root);
+          });
+
+      item.append('span').style('opacity', 0.2).text(' / ');
+
+      extended = item.append('span')
+          .attr('class', 'legend-toggleable')
+          .text('EXTENDED')
+          .on('click', function() {
+            filter.extended = !filter.extended;
+            basic.attr('class', filter.extended ? 'legend-toggleable disabled' : 'legend-toggleable');
+            extended.attr('class', !filter.extended ? 'legend-toggleable disabled' : 'legend-toggleable');
+            visualizer.update(root);
+          });
+
+      basic.attr('class', filter.extended ? 'legend-toggleable disabled' : 'legend-toggleable');
+      extended.attr('class', !filter.extended ? 'legend-toggleable disabled' : 'legend-toggleable');
+
       home = d3.select('body').append('div')
           .attr('id', 'home')
           .on('mouseover', function(d) {
-            tooltip.node.text('Go to /conns');
+            tooltip.node.text('Center screen');
             tooltip.node.style('display', 'block');
             tooltip.node.style('right', props.hidden ? '88px' : '344px');
             tooltip.node.style('bottom', '24px');
